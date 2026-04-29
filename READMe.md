@@ -6,7 +6,8 @@
 4. 브랜치는 main이 통합 브랜치입니다. 각자 하실 때는 git pull origin main 하셔서, 독립된 브랜치(feature/*)에서 개발하시고 push 하면 됩니다.
 예를 들어, 로그인 기능을 개발하고 싶다 
 ->
-git pull origin main
+git clone https://github.com/sgchoi0605/isbox.git
+->
 git checkout -b feature/login
 여기서 개발 후,
 git push origin feature/login
