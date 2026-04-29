@@ -1,0 +1,118 @@
+Package: vcpkg-cmake-config
+Version: 2024-05-23
+Architecture: x64-windows
+Multi-Arch: same
+Abi: d878052496560f1323ae4095dbcfedb73ad16b2521d1bf95983070d2a798b3c3
+Status: install ok installed
+
+Package: vcpkg-cmake
+Version: 2024-04-23
+Architecture: x64-windows
+Multi-Arch: same
+Abi: 26cc9934850e879a8d489bea65ae22956c786a36df39ad420915e27066219e92
+Status: install ok installed
+
+Package: zlib
+Version: 1.3.2
+Depends: vcpkg-cmake, vcpkg-cmake-config
+Architecture: x64-windows
+Multi-Arch: same
+Abi: fb109ee983095c7b9c1ce6248b6429aec4cafccfda5b735f72f1fa80314f1158
+Description: A compression library
+Status: install ok installed
+
+Package: libmariadb
+Version: 3.4.8
+Depends: vcpkg-cmake, vcpkg-cmake-config, zlib
+Architecture: x64-windows
+Multi-Arch: same
+Abi: b3a172eba8f088f8144a02441df4bbe5ced3409b052624f8bbedeb17da7ba25c
+Description: MariaDB Connector/C is used to connect C/C++ applications to MariaDB and MySQL databases
+Status: install ok installed
+
+Package: libmariadb
+Feature: iconv
+Architecture: x64-windows
+Multi-Arch: same
+Description: Enables character set conversion
+Status: install ok installed
+
+Package: vcpkg-cmake-get-vars
+Version: 2025-05-29
+Depends: vcpkg-cmake
+Architecture: x64-windows
+Multi-Arch: same
+Abi: 71e012b40f72a2c2a09c9221539e30bed8ab731c8a56300672cae78ef20fb16a
+Status: install ok installed
+
+Package: openssl
+Version: 3.6.2
+Depends: vcpkg-cmake, vcpkg-cmake-config, vcpkg-cmake-get-vars
+Architecture: x64-windows
+Multi-Arch: same
+Abi: 6eabf2bc39aa338a69ed02e7f23181f2191172271c66863d29770cfec2befd68
+Description: OpenSSL is an open source project that provides a robust, commercial-grade, and full-featured toolkit for the Transport Layer Security (TLS) and Secure Sockets Layer (SSL) protocols. It is also a general-purpose cryptography library.
+Status: install ok installed
+
+Package: c-ares
+Version: 1.34.6
+Port-Version: 1
+Depends: vcpkg-cmake, vcpkg-cmake-config
+Architecture: x64-windows
+Multi-Arch: same
+Abi: 60f6471478832bc97d138369ce2979bec2cbe4c1427f4b12848942338f613940
+Description: A C library for asynchronous DNS requests
+Status: install ok installed
+
+Package: trantor
+Version: 1.5.26
+Port-Version: 1
+Depends: c-ares, openssl, vcpkg-cmake, vcpkg-cmake-config
+Architecture: x64-windows
+Multi-Arch: same
+Abi: 532183919db91095d158be01cf8fd083748f805d81a76f506d8f0ee0990f86ec
+Description: A non-blocking I/O cross-platform TCP network library, using C++14
+Status: install ok installed
+
+Package: jsoncpp
+Version: 1.9.6
+Depends: vcpkg-cmake, vcpkg-cmake-config
+Architecture: x64-windows
+Multi-Arch: same
+Abi: 07383e6f6d0438f394d37bf0f602d1428ff86d7aac3e2d822d56a770032b87ce
+Description: JsonCpp is a C++ library that allows manipulating JSON values, including serialization and deserialization to and from strings. It can also preserve existing comment in unserialization/serialization steps, making it a convenient format to store user input files.
+Status: install ok installed
+
+Package: brotli
+Version: 1.2.0
+Depends: vcpkg-cmake, vcpkg-cmake-config
+Architecture: x64-windows
+Multi-Arch: same
+Abi: 413f33d4b0570dce504302a54e381edfb8cc42bddbaf05b6ee960c118227b8d6
+Description: a generic-purpose lossless compression algorithm that compresses data using a combination of a modern variant of the LZ77 algorithm, Huffman coding and 2nd order context modeling.
+Status: install ok installed
+
+Package: drogon
+Version: 1.9.12
+Depends: brotli, jsoncpp, trantor, vcpkg-cmake, vcpkg-cmake-config, zlib
+Architecture: x64-windows
+Multi-Arch: same
+Abi: 0f701b1670413e43577009ec3f545d1670f712d3f165bf82b95ec5d5a7bf5e4a
+Description: A C++14/17 based HTTP web application framework running on Linux/macOS/Unix/Windows
+Status: install ok installed
+
+Package: drogon
+Feature: mysql
+Depends: libmariadb
+Architecture: x64-windows
+Multi-Arch: same
+Description: Support reading and writing from/to MySQL databases.
+Status: install ok installed
+
+Package: drogon
+Feature: orm
+Architecture: x64-windows
+Multi-Arch: same
+Description: Build with object-relational mapping support.
+Status: install ok installed
+

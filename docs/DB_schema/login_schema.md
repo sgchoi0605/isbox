@@ -9,7 +9,7 @@
 
 ```sql
 CREATE TABLE members (
-  member_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  member_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,  
   email VARCHAR(255) NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   name VARCHAR(50) NOT NULL,
@@ -27,6 +27,100 @@ CREATE TABLE members (
   KEY idx_members_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
+기본 키
+`member_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,`
+BIGINT: 매우 큰 정수 (ID용으로 적합)
+UNSIGNED: 음수 없음 (0 이상만)
+NOT NULL: 반드시 값 필요
+AUTO_INCREMENT: 자동 증가
+
+👉 회원 고유 ID (Primary Key 후보)
+
+📧 이메일
+`email VARCHAR(255) NOT NULL,`
+최대 255자 문자열
+반드시 입력
+
+👉 로그인 ID 역할
+
+🔒 비밀번호
+`password_hash VARCHAR(255) NOT NULL,`
+해시된 비밀번호 저장 (평문 ❌)
+👉 보안상 필수 설계
+👤 이름
+`name VARCHAR(50) NOT NULL,`
+
+👉 사용자 이름
+
+🎭 역할(Role)
+`role ENUM('USER', 'ADMIN') NOT NULL DEFAULT 'USER',`
+ENUM: 정해진 값만 허용
+'USER' 일반 사용자
+'ADMIN' 관리자
+기본값: USER
+🚦 상태(Status)
+`status ENUM('ACTIVE', 'WITHDRAWN', 'SUSPENDED') NOT NULL DEFAULT 'ACTIVE',`
+ACTIVE: 정상
+WITHDRAWN: 탈퇴
+SUSPENDED: 정지
+
+👉 계정 상태 관리용
+
+🎮 레벨 시스템
+`level INT UNSIGNED NOT NULL DEFAULT 1,`
+`exp INT UNSIGNED NOT NULL DEFAULT 0,`
+level: 사용자 레벨 (기본 1)
+exp: 경험치 (기본 0)
+
+👉 게임/보상 시스템 느낌의 설계
+
+🍔 푸드 MBTI
+`food_mbti VARCHAR(20) NULL,`
+선택 입력 가능 (NULL)
+👉 사용자 취향 데이터
+⏱ 생성 시간
+`created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,`
+
+👉 회원 가입 시각 자동 기록
+
+🔄 수정 시간
+`updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,`
+DATETIME NOT NULL
+날짜 + 시간 저장 (YYYY-MM-DD HH:MM:SS)
+반드시 값이 있어야 함
+
+DEFAULT CURRENT_TIMESTAMP
+
+👉 INSERT 시 자동으로 현재 시간 입력
+ON UPDATE CURRENT_TIMESTAMP
+
+👉 행이 UPDATE 될 때마다 자동으로 현재 시간으로 갱신
+
+👉 데이터 변경될 때마다 자동 갱신
+
+🕒 마지막 로그인
+`last_login_at DATETIME NULL,`
+
+👉 로그인 기록 (없을 수도 있음 → NULL 허용)
+
+🔑 3. 제약 조건 (Constraints)
+기본 키
+`PRIMARY KEY (member_id),`
+
+👉 각 회원을 유일하게 식별
+
+이메일 유니크
+`UNIQUE KEY uq_members_email (email),`
+
+👉 이메일 중복 방지
+
+인덱스
+`KEY idx_members_status (status)`
+
+👉 status 검색 성능 향상 (예: ACTIVE 사용자 조회)
+
+
+
 
 ```sql
 CREATE TABLE member_sessions (
@@ -94,6 +188,8 @@ public:
   std::optional<std::string> lastLoginAt;
 };
 ```
+
+optional : 값이 있을 수도 없을 수도 있는 타입
 
 `password_hash`는 로그인 검증용 내부 필드이므로 일반 응답 DTO에는 포함하지 않습니다.  
 필요하면 Mapper 내부 전용 `MemberAuthDTO` 또는 `MemberWithPasswordDTO`를 별도로 둡니다.
