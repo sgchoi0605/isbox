@@ -18,13 +18,14 @@
 
 ```
 html-version/
-├── index.html              # 로그인 페이지
-├── home.html               # 홈페이지 (캘린더 포함)
-├── ingredients.html        # 내 냉장고 (재료 관리)
-├── recipes.html            # AI 요리 추천
-├── community.html          # 커뮤니티
-├── food-mbti.html          # 음식 MBTI 테스트
-├── profile.html            # 내 정보 (프로필, 레벨, MBTI)
+├── pages/
+│   ├── index.html          # 로그인 페이지
+│   ├── home.html           # 홈페이지 (캘린더 포함)
+│   ├── ingredients.html    # 내 냉장고 (재료 관리)
+│   ├── recipes.html        # AI 요리 추천
+│   ├── community.html      # 커뮤니티
+│   ├── food-mbti.html      # 음식 MBTI 테스트
+│   └── profile.html        # 내 정보 (프로필, 레벨, MBTI)
 ├── css/
 │   └── style.css          # 전체 스타일시트
 ├── js/
@@ -37,7 +38,7 @@ html-version/
 ### 방법 1: 브라우저에서 직접 열기
 
 1. `html-version` 폴더로 이동합니다
-2. `index.html` 파일을 웹 브라우저에서 엽니다
+2. `pages/index.html` 파일을 웹 브라우저에서 엽니다
 3. 로그인 페이지에서 임의의 이메일과 비밀번호를 입력하여 로그인합니다
 
 ### 방법 2: 로컬 서버 사용 (권장)
@@ -50,7 +51,7 @@ cd html-version
 python3 -m http.server 8000
 ```
 
-그 다음 브라우저에서 `http://localhost:8000` 접속
+그 다음 브라우저에서 `http://localhost:8000/pages/index.html` 접속
 
 **Node.js가 설치되어 있는 경우:**
 ```bash
@@ -62,17 +63,17 @@ cd html-version
 http-server -p 8000
 ```
 
-그 다음 브라우저에서 `http://localhost:8000` 접속
+그 다음 브라우저에서 `http://localhost:8000/pages/index.html` 접속
 
 **VS Code의 Live Server 확장 사용:**
 1. VS Code에서 Live Server 확장 설치
-2. `index.html` 파일을 우클릭
+2. `pages/index.html` 파일을 우클릭
 3. "Open with Live Server" 선택
 
 ## 사용 방법
 
 ### 1. 로그인
-- `index.html` 페이지에서 시작
+- `pages/index.html` 페이지에서 시작
 - 임의의 이메일과 비밀번호로 로그인 또는 회원가입
 - 데이터는 브라우저의 로컬 스토리지에 저장됩니다
 
