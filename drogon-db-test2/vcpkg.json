@@ -1,0 +1,13 @@
+{
+  "$comment": "drogon-db-test2 빌드 의존성을 정의하는 vcpkg 매니페스트다.",
+  "name": "drogon-db-test2",
+  "version-string": "0.1.0",
+  "dependencies": [
+    {
+      "name": "drogon",
+      "features": [
+        "mysql"
+      ]
+    }
+  ]
+}
