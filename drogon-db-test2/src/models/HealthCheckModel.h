@@ -28,6 +28,17 @@ namespace model
 
 class HealthCheckModel final
 {
+  private:
+    int id_;
+    // 기본키입니다. 테스트에서는 항상 1번 row를 사용합니다.
+
+    int ok_;
+    // 성공 여부를 숫자로 저장합니다. 기존 응답의 value와 호환되도록 int를 사용합니다.
+
+    std::string note_;
+    // 사람이 읽을 수 있는 상태 메시지입니다.
+
+    
   public:
     using PrimaryKeyType = int;
     // Drogon Mapper가 이 모델의 기본키 타입을 알 수 있게 하는 별칭입니다.
@@ -130,15 +141,7 @@ class HealthCheckModel final
         return note_;
     }
 
-  private:
-    int id_;
-    // 기본키입니다. 테스트에서는 항상 1번 row를 사용합니다.
 
-    int ok_;
-    // 성공 여부를 숫자로 저장합니다. 기존 응답의 value와 호환되도록 int를 사용합니다.
-
-    std::string note_;
-    // 사람이 읽을 수 있는 상태 메시지입니다.
 };
 
 }  // namespace model
