@@ -25,6 +25,14 @@ namespace repository
 
 class HealthCheckTestResult final
 {
+  private:
+    model::HealthCheckModel health_;
+    // health_checks 테이블에서 ORM으로 다시 읽어 온 대표 상태 row입니다.
+
+    model::HealthCheckLogModel log_;
+    // health_check_logs 테이블에 INSERT한 이번 호출 로그 row입니다.
+
+
   public:
     HealthCheckTestResult(model::HealthCheckModel health,
                           model::HealthCheckLogModel log)
@@ -48,12 +56,7 @@ class HealthCheckTestResult final
         return body;
     }
 
-  private:
-    model::HealthCheckModel health_;
-    // health_checks 테이블에서 ORM으로 다시 읽어 온 대표 상태 row입니다.
 
-    model::HealthCheckLogModel log_;
-    // health_check_logs 테이블에 INSERT한 이번 호출 로그 row입니다.
 };
 
 class HealthCheckRepository final

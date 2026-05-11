@@ -84,15 +84,15 @@ body["log_note"] = log_.note();
 
 각 필드의 의미는 다음과 같다.
 
-| JSON 필드 | 값의 출처 | 의미 |
-| --- | --- | --- |
-| `ok` | 고정값 | 요청 성공 여부 |
-| `message` | 고정값 | 성공 메시지 |
-| `value` | `health_.ok()` | health row의 ok 값 |
-| `row_id` | `health_.id()` | 조회된 health row id |
-| `row_note` | `health_.note()` | 조회된 health row note |
-| `log_insert_id` | `log_.id()` | 새로 insert된 로그 id |
-| `log_note` | `log_.note()` | 새로 insert된 로그 메시지 |
+| JSON 필드        | 값의 출처          | 의미       |
+| ---             | ---               | ---        |
+| `ok`            | 고정값             | 요청 성공 여부 |
+| `message`       | 고정값             | 성공 메시지 |
+| `value`         | `health_.ok()`    | health row의 ok 값 |
+| `row_id`        | `health_.id()`    | 조회된 health row id |
+| `row_note`      | `health_.note()`  | 조회된 health row note |
+| `log_insert_id` | `log_.id()`       | 새로 insert된 로그 id |
+| `log_note`      | `log_.note()`     | 새로 insert된 로그 메시지 |
 
 Repository가 DB 모델을 그대로 밖으로 노출하지 않고, 응답에 필요한 모양으로 한 번 변환한다는 점이 중요하다.
 
@@ -139,11 +139,11 @@ model::HealthCheckModel health(1, 1, "success");
 
 값의 의미는 다음과 같다.
 
-| 인자 | 값 | 의미 |
-| --- | --- | --- |
-| `id` | `1` | 테스트용 고정 primary key |
-| `ok` | `1` | 성공 상태 |
-| `note` | `"success"` | 상태 메시지 |
+| 인자     | 값          | 의미 |
+| ---     | ---         | --- |
+| `id`    | `1`         | 테스트용 고정 primary key |
+| `ok`    | `1`         | 성공 상태 |
+| `note`  | `"success"` | 상태 메시지 |
 
 ### 3. health row 저장
 

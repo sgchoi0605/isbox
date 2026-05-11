@@ -7,7 +7,6 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <!-- Header -->
   <header class="header">
     <div class="header-container">
       <a href="home.html" class="logo">
@@ -53,7 +52,7 @@
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
                 <circle cx="12" cy="7" r="4"/>
               </svg>
-              <span>내 정보</span>
+              <span>프로필</span>
             </a>
             <div class="user-menu-divider"></div>
             <div class="user-menu-item logout" onclick="app.logout()">
@@ -70,7 +69,6 @@
     </div>
   </header>
 
-  <!-- Navigation -->
   <nav class="nav">
     <div class="nav-container">
       <a href="home.html" class="nav-link" data-page="home">
@@ -84,13 +82,13 @@
           <rect x="5" y="3" width="14" height="18" rx="2" ry="2"/>
           <line x1="9" y1="7" x2="15" y2="7"/>
         </svg>
-        내 냉장고
+        식재료
       </a>
       <a href="recipes.html" class="nav-link" data-page="recipes">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M6 13.87A4 4 0 0 1 7.41 6a5.11 5.11 0 0 1 1.05-1.54 5 5 0 0 1 7.08 0A5.11 5.11 0 0 1 16.59 6 4 4 0 0 1 18 13.87V21H6Z"/>
         </svg>
-        요리 추천
+        레시피 추천
       </a>
       <a href="community.html" class="nav-link" data-page="community">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -107,17 +105,16 @@
           <path d="M7 2v20"/>
           <path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/>
         </svg>
-        음식 MBTI
+        푸드 MBTI
       </a>
     </div>
   </nav>
 
-  <!-- Main Content -->
   <main class="main-content">
     <div class="section-header">
       <div>
         <h2 class="section-title" style="background: linear-gradient(to right, #9333ea, #ec4899); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">커뮤니티</h2>
-        <p class="section-subtitle">배달음식과 식재료를 이웃과 공유하고 교환하세요</p>
+        <p class="section-subtitle">식재료를 나누고 교환하며 이웃과 연결해보세요.</p>
       </div>
       <button class="btn btn-secondary shadow-md" onclick="app.openModal('addPostModal')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -128,7 +125,6 @@
       </button>
     </div>
 
-    <!-- Tabs -->
     <div class="tabs mb-6">
       <div class="tabs-list" style="background: #f3e8ff; max-width: fit-content;">
         <button class="tab-trigger active" data-tab="all" onclick="filterPosts('all')">전체</button>
@@ -140,14 +136,13 @@
     <div id="postsContainer"></div>
   </main>
 
-  <!-- Add Post Modal -->
   <div id="addPostModal" class="modal">
     <div class="modal-content">
       <div class="modal-header">
-        <h3 class="modal-title">새 게시글 작성</h3>
+        <h3 class="modal-title">게시글 작성</h3>
         <button class="modal-close" onclick="app.closeModal('addPostModal')">&times;</button>
       </div>
-      
+
       <form id="addPostForm" onsubmit="handleAddPost(event)">
         <div class="form-group">
           <label class="form-label" for="type">유형*</label>
@@ -159,22 +154,17 @@
 
         <div class="form-group">
           <label class="form-label" for="title">제목*</label>
-          <input type="text" id="title" class="form-input" placeholder="예: 치킨 남은 거 나눔해요" required>
+          <input type="text" id="title" class="form-input" placeholder="예: 남은 채소 나눔합니다" required>
         </div>
 
         <div class="form-group">
-          <label class="form-label" for="description">내용*</label>
-          <textarea id="description" class="form-textarea" placeholder="자세한 내용을 입력해주세요" required></textarea>
+          <label class="form-label" for="content">내용*</label>
+          <textarea id="content" class="form-textarea" placeholder="자세한 내용을 입력해주세요" required></textarea>
         </div>
 
         <div class="form-group">
-          <label class="form-label" for="location">거래 지역*</label>
-          <input type="text" id="location" class="form-input" placeholder="예: 서울시 강남구" required>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label" for="author">작성자*</label>
-          <input type="text" id="author" class="form-input" placeholder="닉네임을 입력하세요" required>
+          <label class="form-label" for="location">거래 지역</label>
+          <input type="text" id="location" class="form-input" placeholder="예: 서울 강남구">
         </div>
 
         <div class="modal-footer">
@@ -185,7 +175,6 @@
     </div>
   </div>
 
-  <!-- Notification Panel -->
   <div id="notificationOverlay" class="notification-overlay"></div>
   <div id="notificationPanel" class="notification-panel">
     <h3 class="text-xl font-bold mb-4 flex items-center gap-2">
@@ -197,7 +186,6 @@
     <div id="notificationList"></div>
   </div>
 
-  <!-- Toast -->
   <div id="toast" class="toast">
     <span class="toast-message"></span>
   </div>
@@ -206,85 +194,103 @@
   <script>
     let currentFilter = 'all';
 
-    function renderPosts() {
-      const posts = app.loadCommunityPosts();
+    async function renderPosts() {
       const container = document.getElementById('postsContainer');
 
-      let filteredPosts = posts;
-      if (currentFilter !== 'all') {
-        filteredPosts = posts.filter(post => post.type === currentFilter);
-      }
+      try {
+        const posts = await app.loadCommunityPosts(currentFilter);
+        const currentUserId = Number(app.state.user?.memberId || 0);
 
-      if (filteredPosts.length === 0) {
+        if (posts.length === 0) {
+          container.innerHTML = `
+            <div class="card shadow-md">
+              <div class="card-content empty-state">
+                <div class="empty-icon">📭</div>
+                <p class="text-gray-500">아직 등록된 게시글이 없습니다.</p>
+                <p class="text-sm text-gray-400 mt-1">첫 번째 게시글을 작성해보세요!</p>
+              </div>
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = `
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            ${posts.map(post => `
+              <div class="card post-card">
+                <div class="card-header">
+                  <div class="flex items-start justify-between mb-2">
+                    <div class="flex-1">
+                      <div class="flex items-center gap-2 mb-2">
+                        <span class="badge ${post.type === 'share' ? 'badge-primary' : 'badge-secondary'}">
+                          ${post.type === 'share' ? '나눔' : '교환'}
+                        </span>
+                        ${post.status === 'available' ? '<span class="badge" style="background: #dcfce7; color: #166534; border: 1px solid #86efac;">거래가능</span>' : ''}
+                      </div>
+                      <h3 class="card-title text-lg text-gray-900">${post.title}</h3>
+                    </div>
+                  </div>
+                </div>
+                <div class="card-content" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                  <p class="card-description">${post.content}</p>
+
+                  <div style="display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.875rem; color: #4b5563;">
+                    <div class="flex items-center gap-2">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9333ea" stroke-width="2">
+                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                        <circle cx="12" cy="10" r="3"/>
+                      </svg>
+                      ${post.location || '-'}
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9333ea" stroke-width="2">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                        <circle cx="12" cy="7" r="4"/>
+                      </svg>
+                      ${post.authorName || '-'}
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9333ea" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <polyline points="12 6 12 12 16 14"/>
+                      </svg>
+                      ${app.getTimeAgo(post.createdAt)}
+                    </div>
+                  </div>
+
+                  <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn btn-secondary" style="flex: 1;">연락하기</button>
+                    ${currentUserId && Number(post.memberId) === currentUserId ? `
+                      <button
+                        class="btn btn-outline"
+                        style="flex: 1; color: #dc2626; border-color: #fecaca;"
+                        onclick="handleDeletePost(${Number(post.postId)})"
+                      >
+                        삭제
+                      </button>
+                    ` : ''}
+                  </div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      } catch (error) {
         container.innerHTML = `
           <div class="card shadow-md">
             <div class="card-content empty-state">
-              <div class="empty-icon">👥</div>
-              <p class="text-gray-500">아직 등록된 게시글이 없습니다.</p>
-              <p class="text-sm text-gray-400 mt-1">첫 번째 게시글을 작성해보세요!</p>
+              <p class="text-gray-500">게시글을 불러오지 못했습니다.</p>
             </div>
           </div>
         `;
-        return;
+        app.showToast(error.message || '게시글을 불러오지 못했습니다.', 'error');
       }
-
-      container.innerHTML = `
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          ${filteredPosts.map(post => `
-            <div class="card post-card">
-              <div class="card-header">
-                <div class="flex items-start justify-between mb-2">
-                  <div class="flex-1">
-                    <div class="flex items-center gap-2 mb-2">
-                      <span class="badge ${post.type === 'share' ? 'badge-primary' : 'badge-secondary'}">
-                        ${post.type === 'share' ? '나눔' : '교환'}
-                      </span>
-                      ${post.status === 'available' ? '<span class="badge" style="background: #dcfce7; color: #166534; border: 1px solid #86efac;">거래가능</span>' : ''}
-                    </div>
-                    <h3 class="card-title text-lg text-gray-900">${post.title}</h3>
-                  </div>
-                </div>
-              </div>
-              <div class="card-content" style="display: flex; flex-direction: column; gap: 0.75rem;">
-                <p class="card-description">${post.description}</p>
-                
-                <div style="display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.875rem; color: #4b5563;">
-                  <div class="flex items-center gap-2">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9333ea" stroke-width="2">
-                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-                      <circle cx="12" cy="10" r="3"/>
-                    </svg>
-                    ${post.location}
-                  </div>
-                  <div class="flex items-center gap-2">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9333ea" stroke-width="2">
-                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                      <circle cx="12" cy="7" r="4"/>
-                    </svg>
-                    ${post.author}
-                  </div>
-                  <div class="flex items-center gap-2">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9333ea" stroke-width="2">
-                      <circle cx="12" cy="12" r="10"/>
-                      <polyline points="12 6 12 12 16 14"/>
-                    </svg>
-                    ${app.getTimeAgo(post.createdAt)}
-                  </div>
-                </div>
-
-                <button class="btn btn-secondary" style="width: 100%;">연락하기</button>
-              </div>
-            </div>
-          `).join('')}
-        </div>
-      `;
     }
 
-    function filterPosts(filter) {
+    async function filterPosts(filter) {
       currentFilter = filter;
-      renderPosts();
+      await renderPosts();
 
-      // 탭 활성화
       const triggers = document.querySelectorAll('.tab-trigger');
       triggers.forEach(trigger => {
         trigger.classList.remove('active');
@@ -294,28 +300,43 @@
       });
     }
 
-    function handleAddPost(event) {
+    async function handleAddPost(event) {
       event.preventDefault();
 
       const post = {
         type: document.getElementById('type').value,
         title: document.getElementById('title').value,
-        description: document.getElementById('description').value,
-        location: document.getElementById('location').value,
-        author: document.getElementById('author').value
+        content: document.getElementById('content').value,
+        location: document.getElementById('location').value
       };
 
-      app.addCommunityPost(post);
-      app.closeModal('addPostModal');
-      document.getElementById('addPostForm').reset();
-      renderPosts();
+      try {
+        await app.addCommunityPost(post);
+        app.closeModal('addPostModal');
+        document.getElementById('addPostForm').reset();
+        await renderPosts();
+      } catch (error) {
+        app.showToast(error.message || '게시글 등록에 실패했습니다.', 'error');
+      }
     }
 
-    // 알림 표시
+    async function handleDeletePost(postId) {
+      if (!confirm('이 게시글을 삭제하시겠습니까?')) {
+        return;
+      }
+
+      try {
+        await app.deleteCommunityPost(postId);
+        await renderPosts();
+      } catch (error) {
+        app.showToast(error.message || '게시글 삭제에 실패했습니다.', 'error');
+      }
+    }
+
     function renderNotifications() {
       const expiring = app.checkExpiringItems();
       const notificationList = document.getElementById('notificationList');
-      
+
       if (expiring.length === 0) {
         notificationList.innerHTML = '<p class="text-sm text-gray-500">유통기한 임박 재료가 없습니다.</p>';
       } else {
@@ -330,12 +351,12 @@
       }
     }
 
-    document.addEventListener('DOMContentLoaded', function() {
-      renderPosts();
+    document.addEventListener('DOMContentLoaded', async function() {
+      await app.checkAuth();
+      await renderPosts();
       renderNotifications();
     });
 
-    // 드롭다운 닫기 (외부 클릭)
     document.addEventListener('click', function(e) {
       const userMenu = document.querySelector('.user-menu');
       const dropdown = document.getElementById('userMenuDropdown');

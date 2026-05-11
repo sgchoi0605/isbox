@@ -407,9 +407,9 @@
     }
 
     // 페이지별 초기화
-    function initHomePage() {
+    async function initHomePage() {
       const ingredients = app.loadIngredients();
-      const posts = app.loadCommunityPosts();
+      const posts = await app.loadCommunityPosts();
       const expiring = app.checkExpiringItems();
       const { level, exp } = app.loadLevelData();
       const expToNext = app.getExpToNextLevel(level);

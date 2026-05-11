@@ -34,8 +34,8 @@
           <!-- Tabs -->
           <div class="tabs">
             <div class="tabs-list">
-              <button class="tab-trigger active" data-tab="login" onclick="app.switchTab('login')">로그인</button>
-              <button class="tab-trigger" data-tab="signup" onclick="app.switchTab('signup')">회원가입</button>
+              <button type="button" class="tab-trigger active" data-tab="login" onclick="app.switchTab('login')">로그인</button>
+              <button type="button" class="tab-trigger" data-tab="signup" onclick="app.switchTab('signup')">회원가입</button>
             </div>
 
             <!-- Login Tab -->
@@ -88,7 +88,7 @@
                 </div>
 
                 <div class="flex items-start gap-2 mb-4" style="font-size: 0.875rem;">
-                  <input type="checkbox" required style="margin-top: 0.25rem;">
+                  <input type="checkbox" id="signupAgreeTerms" required style="margin-top: 0.25rem;">
                   <span>
                     <a href="#" style="color: #2563eb;">이용약관</a> 및 
                     <a href="#" style="color: #2563eb;">개인정보처리방침</a>에 동의합니다.

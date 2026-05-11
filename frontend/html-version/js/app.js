@@ -1,4 +1,4 @@
-// 전역 상태 관리
+﻿// 전역 상태 관리
 const state = {
   user: null,
   ingredients: [],
@@ -8,6 +8,38 @@ const state = {
   level: 1,
   exp: 0
 };
+
+const API_BASE_URL = 'http://127.0.0.1:8080';
+
+async function parseJsonSafe(response) {
+  try {
+    return await response.json();
+  } catch (_error) {
+    return null;
+  }
+}
+
+async function postJson(path, body) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+
+  const data = await parseJsonSafe(response);
+  return { response, data };
+}
+
+function buildMemberHeader() {
+  if (!state.user || !state.user.memberId) {
+    return {};
+  }
+
+  return { 'X-Member-Id': String(state.user.memberId) };
+}
 
 // 로컬 스토리지 유틸리티
 const storage = {
@@ -31,6 +63,23 @@ const storage = {
     localStorage.removeItem(key);
   }
 };
+
+function setAuthenticatedUser(member) {
+  if (!member) return;
+
+  const level = Number(member.level) > 0 ? Number(member.level) : 1;
+  const exp = Number(member.exp) >= 0 ? Number(member.exp) : 0;
+
+  state.user = {
+    ...member,
+    level,
+    exp,
+    loggedIn: true
+  };
+  state.level = level;
+  state.exp = exp;
+  storage.set('user', state.user);
+}
 
 // Toast 알림
 function showToast(message, type = 'info') {
@@ -84,89 +133,136 @@ function closeNotificationPanel() {
 }
 
 // 사용자 인증
-function login(email, password) {
+async function login(email, password) {
   if (!email || !password) {
-    showToast('이메일과 비밀번호를 입력해주세요.', 'error');
+    showToast('Please enter email and password.', 'error');
     return false;
   }
 
-  const user = {
-    email: email,
-    name: email.split('@')[0],
-    loggedIn: true
-  };
+  try {
+    const { response, data } = await postJson('/api/auth/login', {
+      email,
+      password
+    });
 
-  storage.set('user', user);
-  state.user = user;
-  showToast('로그인 성공!', 'success');
+    if (!response.ok || !data || data.ok === false) {
+      throw new Error(data?.message || 'Login failed.');
+    }
 
-  setTimeout(() => {
-    window.location.href = 'home.html';
-  }, 1000);
+    setAuthenticatedUser(data.member);
 
-  return true;
+    showToast('Login success!', 'success');
+    setTimeout(() => {
+      window.location.href = 'home.html';
+    }, 500);
+
+    return true;
+  } catch (error) {
+    showToast(error.message, 'error');
+    return false;
+  }
 }
+async function signup(name, email, password, confirmPassword) {
+  const agreeTerms = document.getElementById('signupAgreeTerms')?.checked || false;
 
-function signup(name, email, password, confirmPassword) {
-  if (!name || !email || !password) {
-    showToast('모든 필드를 입력해주세요.', 'error');
+  if (!name || !email || !password || !confirmPassword) {
+    showToast('Please fill in all fields.', 'error');
+    return false;
+  }
+
+  if (!agreeTerms) {
+    showToast('Please agree to the terms.', 'error');
     return false;
   }
 
   if (password !== confirmPassword) {
-    showToast('비밀번호가 일치하지 않습니다.', 'error');
+    showToast('Passwords do not match.', 'error');
     return false;
   }
 
   if (password.length < 8) {
-    showToast('비밀번호는 최소 8자 이상이어야 합니다.', 'error');
+    showToast('Password must be at least 8 characters.', 'error');
     return false;
   }
 
-  const user = {
-    email: email,
-    name: name,
-    loggedIn: true
-  };
+  try {
+    const { response, data } = await postJson('/api/auth/signup', {
+      name,
+      email,
+      password,
+      confirmPassword,
+      agreeTerms
+    });
 
-  storage.set('user', user);
-  state.user = user;
-  showToast('회원가입 성공! 환영합니다!', 'success');
+    if (!response.ok || !data || data.ok === false) {
+      throw new Error(data?.message || 'Signup failed.');
+    }
 
-  setTimeout(() => {
-    window.location.href = 'home.html';
-  }, 1000);
+    setAuthenticatedUser(data.member);
 
-  return true;
+    showToast('Signup success!', 'success');
+    setTimeout(() => {
+      window.location.href = 'home.html';
+    }, 500);
+
+    return true;
+  } catch (error) {
+    showToast(error.message, 'error');
+    return false;
+  }
 }
+async function logout() {
+  try {
+    await fetch(`${API_BASE_URL}/api/auth/logout`, {
+      method: 'POST',
+      credentials: 'include'
+    });
+  } catch (_error) {
+    // Ignore network errors on logout.
+  }
 
-function logout() {
   storage.remove('user');
   state.user = null;
-  showToast('로그아웃되었습니다.', 'success');
+  showToast('Logged out.', 'success');
 
   setTimeout(() => {
     window.location.href = 'index.html';
-  }, 1000);
+  }, 500);
 }
+async function checkAuth() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/members/me`, {
+      credentials: 'include'
+    });
+    const data = await parseJsonSafe(response);
 
-function checkAuth() {
-  const user = storage.get('user');
-  if (user && user.loggedIn) {
-    state.user = user;
+    if (!response.ok || !data || data.ok === false) {
+      state.user = null;
+      storage.remove('user');
+      return false;
+    }
+
+    setAuthenticatedUser(data.member);
     return true;
+  } catch (_error) {
+    const user = storage.get('user');
+    if (user && user.loggedIn) {
+      state.user = user;
+      return true;
+    }
+
+    state.user = null;
+    return false;
   }
-  return false;
 }
 
-function requireAuth() {
-  if (!checkAuth()) {
+async function requireAuth() {
+  if (!(await checkAuth())) {
     window.location.href = 'index.html';
     return false;
   }
   return true;
 }
-
 function displayUserInfo() {
   const userNameEl = document.getElementById('userName');
   const userEmailEl = document.getElementById('userEmail');
@@ -301,7 +397,7 @@ function addIngredient(ingredient) {
   ingredients.push(newIngredient);
   saveIngredients(ingredients);
 
-  addExp(10, '냉장고 재료 추가');
+  void addExp('INGREDIENT_ADD', '식재료 추가');
 
   return newIngredient;
 }
@@ -372,59 +468,73 @@ function checkExpiringItems() {
   return expiring;
 }
 
-function loadCommunityPosts() {
-  let posts = storage.get('communityPosts');
+async function loadCommunityPosts(filter = 'all') {
+  const query = filter && filter !== 'all'
+    ? `?type=${encodeURIComponent(filter)}`
+    : '';
 
-  if (!posts || posts.length === 0) {
-    posts = [
-      {
-        id: '1',
-        type: 'share',
-        title: '치킨 남은 거 나눠드려요',
-        description: '배달시킨 치킨이 너무 많이 남았어요. 가까운 분 가져가세요!',
-        location: '서울시 강남구',
-        author: '김철수',
-        createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-        status: 'available'
-      },
-      {
-        id: '2',
-        type: 'exchange',
-        title: '양파 <-> 감자 교환해요',
-        description: '양파가 너무 많아요. 감자와 교환하실 분 연락주세요.',
-        location: '서울시 서초구',
-        author: '이영희',
-        createdAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-        status: 'available'
-      }
-    ];
-    storage.set('communityPosts', posts);
+  const response = await fetch(`${API_BASE_URL}/api/board/posts${query}`, {
+    method: 'GET',
+    credentials: 'include'
+  });
+
+  const body = await parseJsonSafe(response);
+  if (!response.ok || !body || body.ok === false) {
+    throw new Error(body?.message || 'Failed to load community posts.');
   }
 
-  state.communityPosts = posts;
-  return posts;
+  state.communityPosts = body.posts || [];
+  return state.communityPosts;
 }
 
 function saveCommunityPosts(posts) {
-  storage.set('communityPosts', posts);
   state.communityPosts = posts;
 }
 
-function addCommunityPost(post) {
-  const newPost = {
-    id: Date.now().toString(),
-    ...post,
-    createdAt: new Date().toISOString(),
-    status: 'available'
+async function addCommunityPost(post) {
+  const payload = {
+    type: post.type,
+    title: post.title,
+    content: post.content,
+    location: post.location || ''
   };
 
-  const posts = loadCommunityPosts();
-  posts.unshift(newPost);
-  saveCommunityPosts(posts);
+  const response = await fetch(`${API_BASE_URL}/api/board/posts`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...buildMemberHeader()
+    },
+    body: JSON.stringify(payload)
+  });
 
-  addExp(30, '커뮤니티 게시글 작성');
+  const body = await parseJsonSafe(response);
+  if (!response.ok || !body || body.ok === false) {
+    throw new Error(body?.message || 'Failed to create post.');
+  }
 
-  return newPost;
+  await addExp('COMMUNITY_POST_CREATE', '커뮤니티 게시글 작성');
+  return body.post;
+}
+
+async function deleteCommunityPost(postId) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/board/posts?postId=${encodeURIComponent(postId)}`,
+    {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: buildMemberHeader()
+    }
+  );
+
+  const body = await parseJsonSafe(response);
+  if (!response.ok || !body || body.ok === false) {
+    throw new Error(body?.message || 'Failed to delete post.');
+  }
+
+  showToast('게시글이 삭제되었습니다.', 'success');
+  return true;
 }
 
 function getTimeAgo(dateString) {
@@ -435,13 +545,19 @@ function getTimeAgo(dateString) {
   const diffHours = Math.floor(diffMins / 60);
   const diffDays = Math.floor(diffHours / 24);
 
+  if (diffMins < 1) {
+    return '방금 전';
+  }
+
   if (diffMins < 60) {
     return `${diffMins}분 전`;
-  } else if (diffHours < 24) {
-    return `${diffHours}시간 전`;
-  } else {
-    return `${diffDays}일 전`;
   }
+
+  if (diffHours < 24) {
+    return `${diffHours}시간 전`;
+  }
+
+  return `${diffDays}일 전`;
 }
 
 function recommendRecipes(selectedIngredientIds) {
@@ -455,11 +571,12 @@ function recommendRecipes(selectedIngredientIds) {
     return [];
   }
 
+  const selectedNames = selectedItems.slice(0, 3).map(item => item.name).join(', ');
   const mockRecipes = [
     {
       id: '1',
       name: '간단 볶음밥',
-      description: `${selectedItems.slice(0, 2).map(i => i.name).join(', ')}로 만드는 간단하고 맛있는 볶음밥`,
+      description: `${selectedNames}을(를) 활용한 빠른 볶음밥`,
       cookTime: '15분',
       servings: '2인분',
       difficulty: '쉬움',
@@ -470,36 +587,34 @@ function recommendRecipes(selectedIngredientIds) {
         '참기름 1스푼'
       ],
       steps: [
-        '모든 재료를 한입 크기로 썰어주세요.',
-        '팬에 기름을 두르고 재료를 볶아주세요.',
-        '밥을 넣고 골고루 섞어가며 볶아주세요.',
-        '간장과 참기름으로 간을 맞춰주세요.'
+        '재료를 먹기 좋은 크기로 손질합니다.',
+        '팬에 기름을 두르고 재료를 볶습니다.',
+        '밥을 넣고 골고루 섞어 볶습니다.',
+        '간장과 참기름으로 마무리합니다.'
       ]
     },
     {
       id: '2',
-      name: '건강 샐러드',
-      description: `신선한 ${selectedItems[0]?.name || '채소'}를 활용한 영양 만점 샐러드`,
+      name: '야채 샐러드',
+      description: `${selectedNames}을(를) 활용한 가벼운 샐러드`,
       cookTime: '10분',
       servings: '1인분',
       difficulty: '쉬움',
       ingredients: [
         ...selectedItems.slice(0, 4).map(i => `${i.name} ${i.quantity}${i.unit}`),
-        '올리브유 2스푼',
-        '레몬즙 1스푼',
-        '소금, 후추 약간'
+        '올리브오일 2스푼',
+        '레몬즙 1스푼'
       ],
       steps: [
-        '모든 채소를 깨끗이 씻어주세요.',
-        '먹기 좋은 크기로 썰어주세요.',
-        '볼에 담고 드레싱 재료를 섞어주세요.',
-        '골고루 버무려 완성합니다.'
+        '재료를 깨끗이 씻습니다.',
+        '한입 크기로 썰어 그릇에 담습니다.',
+        '드레싱 재료를 섞어 뿌립니다.'
       ]
     },
     {
       id: '3',
-      name: '든든한 국물요리',
-      description: `${selectedItems[0]?.name || '재료'}로 끓이는 속 풀리는 국물요리`,
+      name: '재료 듬뿍 국물요리',
+      description: `${selectedNames}을(를) 넣은 따뜻한 국물요리`,
       cookTime: '25분',
       servings: '3인분',
       difficulty: '보통',
@@ -510,17 +625,15 @@ function recommendRecipes(selectedIngredientIds) {
         '국간장 2스푼'
       ],
       steps: [
-        '냄비에 물을 끓여주세요.',
-        '재료를 넣고 중불에서 15분간 끓여주세요.',
-        '간을 맞추고 5분 더 끓여주세요.',
-        '그릇에 담아 완성합니다.'
+        '냄비에 물을 끓입니다.',
+        '재료를 넣고 중불에서 익힙니다.',
+        '간을 맞추고 5분 더 끓입니다.'
       ]
     }
   ];
 
   state.recipes = mockRecipes;
-
-  addExp(20, 'AI 요리 추천 이용');
+  void addExp('RECIPE_RECOMMEND', 'AI 요리 추천 이용');
 
   return mockRecipes;
 }
@@ -555,40 +668,71 @@ function formatDate(dateString) {
 
 // 레벨 시스템
 function loadLevelData() {
-  const level = storage.get('userLevel') || 1;
-  const exp = storage.get('userExp') || 0;
+  const storedUser = storage.get('user');
+  if (!state.user && storedUser && storedUser.loggedIn) {
+    state.user = storedUser;
+  }
+
+  const levelSource = state.user?.level ?? storedUser?.level ?? 1;
+  const expSource = state.user?.exp ?? storedUser?.exp ?? 0;
+  const level = Number(levelSource) > 0 ? Number(levelSource) : 1;
+  const exp = Number(expSource) >= 0 ? Number(expSource) : 0;
+
   state.level = level;
   state.exp = exp;
+
+  if (state.user) {
+    state.user = {
+      ...state.user,
+      level,
+      exp,
+      loggedIn: true
+    };
+    storage.set('user', state.user);
+  }
+
   return { level, exp };
 }
 
 function getExpToNextLevel(level) {
-  return level * 100;
+  const normalizedLevel = Number(level) > 0 ? Number(level) : 1;
+  return normalizedLevel * 100;
 }
 
-function addExp(amount, actionName) {
-  const { level, exp } = loadLevelData();
-  const newExp = exp + amount;
-  const requiredExp = getExpToNextLevel(level);
+async function addExp(actionType, actionName) {
+  if (!actionType || !state.user?.loggedIn) {
+    return false;
+  }
 
-  if (newExp >= requiredExp) {
-    // 레벨업!
-    const newLevel = level + 1;
-    const remainingExp = newExp - requiredExp;
+  const { level: localLevelBefore } = loadLevelData();
 
-    storage.set('userLevel', newLevel);
-    storage.set('userExp', remainingExp);
-    state.level = newLevel;
-    state.exp = remainingExp;
+  try {
+    const { response, data } = await postJson('/api/members/exp', {
+      actionType
+    });
 
-    showToast(`🎉 레벨업! Lv.${level} → Lv.${newLevel}\n${actionName}으로 레벨이 올랐습니다!`, 'success');
+    if (!response.ok || !data || data.ok === false || !data.member) {
+      throw new Error(data?.message || 'Failed to update experience.');
+    }
+
+    setAuthenticatedUser(data.member);
+    const { level: currentLevel } = loadLevelData();
     updateLevelDisplay();
-  } else {
-    storage.set('userExp', newExp);
-    state.exp = newExp;
 
-    showToast(`+${amount} EXP\n${actionName}`, 'success');
-    updateLevelDisplay();
+    const awardedExp = Number(data.awardedExp || 0);
+    const previousLevel = Number(data.previousLevel || localLevelBefore);
+    const newLevel = Number(data.newLevel || currentLevel);
+
+    if (newLevel > previousLevel) {
+      showToast(`레벨업! Lv.${previousLevel} -> Lv.${newLevel}\n${actionName}으로 레벨이 올랐습니다.`, 'success');
+    } else if (awardedExp > 0) {
+      showToast(`+${awardedExp} EXP\n${actionName}`, 'success');
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Failed to award experience:', error);
+    return false;
   }
 }
 
@@ -619,46 +763,30 @@ function updateLevelDisplay() {
   }
 }
 
-// 음식 MBTI
+// 푸드 MBTI
 const mbtiResults = {
   SQKFAH: {
     type: 'SQKFAH',
-    title: '불타는 미식 탐험가 🔥',
-    description: '매운 한식을 빠르게 즐기며, 새로운 핫플을 찾아다니는 당신! 트렌디한 맛집 탐방을 좋아하는 열정적인 푸디입니다.',
-    traits: ['매운맛 선호', '빠른 식사', '한식 애호가', '모험적 성향'],
-    recommendedFoods: ['떡볶이', '불닭볶음면', '매운 닭발', '신라면', '김치찌개'],
+    title: '불닭 도전가',
+    description: '매운 음식을 즐기고 새로운 맛에 도전하는 타입입니다.',
+    traits: ['매운맛 선호', '빠른 결정', '도전적'],
+    recommendedFoods: ['불닭볶음면', '떡볶이', '매운 치킨'],
     color: 'red-orange'
   },
   MCLWLR: {
     type: 'MCLWLR',
-    title: '우아한 미식가 🍷',
-    description: '부드러운 양식을 여유롭게 즐기는 당신! 정성스럽게 요리하고 익숙한 맛집에서 천천히 식사하는 것을 선호합니다.',
-    traits: ['순한맛 선호', '여유로운 식사', '양식 애호가', '안정적 성향'],
-    recommendedFoods: ['크림파스타', '리조또', '스테이크', '그라탕', '수프'],
+    title: '슬로우 미식가',
+    description: '부드럽고 안정적인 맛을 선호하는 타입입니다.',
+    traits: ['담백한 맛', '안정 선호', '편안한 식사'],
+    recommendedFoods: ['크림파스타', '리조또', '스테이크'],
     color: 'purple-pink'
-  },
-  SQWFAH: {
-    type: 'SQWFAH',
-    title: '글로벌 스피드 러너 🌍',
-    description: '매운 양식을 빠르게 즐기며 새로운 핫플을 탐방하는 당신! 국경을 넘나드는 미식 경험을 추구합니다.',
-    traits: ['매운맛 선호', '빠른 식사', '양식 애호가', '모험적 성향'],
-    recommendedFoods: ['매운 까르보나라', '칠리 피자', '타코', '치폴레 부리또', '핫윙'],
-    color: 'yellow-red'
-  },
-  MCKFTR: {
-    type: 'MCKFTR',
-    title: '전통 한식 장인 🏯',
-    description: '순한 한식을 정성스럽게 만들어 익숙한 곳에서 즐기는 당신! 전통적인 맛과 안정감을 중요하게 생각합니다.',
-    traits: ['순한맛 선호', '정성 요리', '한식 애호가', '안정적 성향'],
-    recommendedFoods: ['된장찌개', '비빔밥', '갈비찜', '불고기', '잡채'],
-    color: 'green-emerald'
   },
   default: {
     type: 'UNIQUE',
-    title: '유니크 미식가 ✨',
-    description: '당신만의 독특한 음식 취향을 가진 특별한 미식가입니다! 다양한 음식을 균형있게 즐기는 스타일이에요.',
-    traits: ['균형잡힌 취향', '다양성 추구', '유연한 식습관', '개성있는 선택'],
-    recommendedFoods: ['퓨전 요리', '브런치', '샐러드', '베이커리', '간식'],
+    title: '밸런스 미식가',
+    description: '다양한 음식을 상황에 맞게 즐기는 타입입니다.',
+    traits: ['균형 잡힌 취향', '유연함', '탐색형'],
+    recommendedFoods: ['샐러드', '한식', '파스타'],
     color: 'blue-cyan'
   }
 };
@@ -684,7 +812,7 @@ function saveFoodMBTI(answers) {
   };
 
   storage.set('foodMBTI', mbtiData);
-  addExp(50, '음식 MBTI 테스트 완료');
+  void addExp('FOOD_MBTI_COMPLETE', '푸드 MBTI 테스트 완료');
 
   return result;
 }
@@ -704,11 +832,11 @@ function activateCurrentNav() {
   });
 }
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
   if (!window.location.pathname.includes('index.html') &&
       window.location.pathname !== '/' &&
       !window.location.pathname.endsWith('/')) {
-    if (!requireAuth()) return;
+    if (!(await requireAuth())) return;
     displayUserInfo();
     checkExpiringItems();
     activateCurrentNav();
@@ -730,7 +858,6 @@ document.addEventListener('DOMContentLoaded', function() {
     notificationOverlay.addEventListener('click', closeNotificationPanel);
   }
 });
-
 window.app = {
   login,
   signup,
@@ -752,6 +879,7 @@ window.app = {
   checkExpiringItems,
   loadCommunityPosts,
   addCommunityPost,
+  deleteCommunityPost,
   getTimeAgo,
   recommendRecipes,
   showToast,
@@ -771,3 +899,6 @@ window.app = {
   storage,
   state
 };
+
+
+
