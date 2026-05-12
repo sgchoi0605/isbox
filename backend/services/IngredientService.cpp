@@ -642,10 +642,17 @@ void IngredientService::searchProcessedFoods(const std::string &keyword,
         "&type=json&pageNo=1&numOfRows=10&foodNm=" +
         drogon::utils::urlEncodeComponent(normalizedKeyword);
 
-    auto client = drogon::HttpClient::newHttpClient("https://api.data.go.kr");
+    // Some Windows environments fail hostname resolution in Drogon's async resolver
+    // and return ReqResult::BadServerAddress. Connect by IP and pin Host header.
+    // validateCert=false is required because TLS cert CN is the domain, not raw IP.
+    auto client = drogon::HttpClient::newHttpClient("https://27.101.215.193",
+                                                    nullptr,
+                                                    false,
+                                                    false);
     auto request = drogon::HttpRequest::newHttpRequest();
     request->setMethod(drogon::Get);
     request->setPath(path);
+    request->addHeader("Host", "api.data.go.kr");
 
     // 외부 API를 비동기로 호출하고 응답 본문을 DTO 목록으로 매핑해 콜백으로 반환한다.
     // 이 함수는 즉시 반환되고, 실제 결과는 람다 내부에서 callback으로 전달된다.
@@ -660,7 +667,8 @@ void IngredientService::searchProcessedFoods(const std::string &keyword,
             {
                 // API 서버에 도달하지 못했거나 Drogon이 응답 객체를 만들지 못한 경우다.
                 result.statusCode = 502;
-                result.message = "Failed to call nutrition public API.";
+                result.message = "Failed to call nutrition public API. (ReqResult: " +
+                                 drogon::to_string(reqResult) + ")";
                 callback(std::move(result));
                 return;
             }

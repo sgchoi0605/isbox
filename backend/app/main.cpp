@@ -1,7 +1,10 @@
 #include <drogon/drogon.h>
 
+#include <algorithm>
 #include <cstdlib>
+#include <cctype>
 #include <filesystem>
+#include <string>
 #include <vector>
 
 #include "../controllers/MemberController.h"
@@ -11,10 +14,49 @@
 namespace
 {
 
+bool isEnabledByEnv(const char *key)
+{
+    const auto *raw = std::getenv(key);
+    if (raw == nullptr)
+    {
+        return false;
+    }
+
+    std::string value(raw);
+    value.erase(std::remove_if(value.begin(),
+                               value.end(),
+                               [](unsigned char ch) {
+                                   return std::isspace(ch) != 0;
+                               }),
+                value.end());
+
+    std::transform(value.begin(),
+                   value.end(),
+                   value.begin(),
+                   [](unsigned char ch) {
+                       return static_cast<char>(std::tolower(ch));
+                   });
+
+    return value == "1" || value == "true" || value == "yes" || value == "on";
+}
+
 void configureMariaDbRuntimeForWindows()
 {
 #ifdef _WIN32
-    _putenv_s("MARIADB_TLS_DISABLE_PEER_VERIFICATION", "1");
+    // Local Windows development should work out of the box.
+    // If strict DB TLS is required, set ISBOX_STRICT_DB_TLS=1.
+    if (isEnabledByEnv("ISBOX_STRICT_DB_TLS"))
+    {
+        _putenv_s("MARIADB_TLS_DISABLE_PEER_VERIFICATION", "");
+        LOG_INFO << "Strict DB TLS mode enabled via ISBOX_STRICT_DB_TLS.";
+    }
+    else
+    {
+        _putenv_s("MARIADB_TLS_DISABLE_PEER_VERIFICATION", "1");
+        LOG_WARN << "DB TLS peer verification is disabled by default on Windows "
+                 << "for local development. Set ISBOX_STRICT_DB_TLS=1 to enable "
+                 << "strict verification.";
+    }
 
     const std::filesystem::path cwd = std::filesystem::current_path();
     const std::vector<std::filesystem::path> candidatePluginDirs = {
