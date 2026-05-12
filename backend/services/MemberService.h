@@ -27,6 +27,8 @@ class MemberService
 
     // 세션 토큰을 해석해 활성 회원 정보를 반환한다.
     std::optional<MemberDTO> getCurrentMember(const std::string &sessionToken);
+    std::optional<std::uint64_t> getCurrentMemberId(
+        const std::string &sessionToken);
 
     UpdateProfileResultDTO updateProfile(const std::string &sessionToken,
                                          const UpdateProfileRequestDTO &request);

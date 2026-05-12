@@ -252,6 +252,31 @@ std::optional<MemberDTO> MemberService::getCurrentMember(
     }
 }
 
+std::optional<std::uint64_t> MemberService::getCurrentMemberId(
+    const std::string &sessionToken)
+{
+    try
+    {
+        const auto memberId = resolveSessionMemberId(sessionToken);
+        if (!memberId.has_value())
+        {
+            return std::nullopt;
+        }
+
+        const auto member = mapper_.findById(*memberId);
+        if (!member.has_value() || member->status != "ACTIVE")
+        {
+            return std::nullopt;
+        }
+
+        return member->memberId;
+    }
+    catch (const std::exception &)
+    {
+        return std::nullopt;
+    }
+}
+
 UpdateProfileResultDTO MemberService::updateProfile(
     const std::string &sessionToken,
     const UpdateProfileRequestDTO &request)

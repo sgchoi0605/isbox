@@ -334,11 +334,6 @@
           <div class="flex items-start justify-between gap-2">
             <div>
               <p class="font-medium text-gray-900">${escapeHtml(item.foodName)}</p>
-              <p class="text-xs text-gray-500">${escapeHtml(item.foodGroupName || '-')}</p>
-              <p class="text-xs text-gray-500 mt-1">
-                기준: ${escapeHtml(item.nutritionBasisAmount || '-')} /
-                열량: ${escapeHtml(item.energyKcal ?? '-')} kcal
-              </p>
             </div>
             <button type="button" class="btn btn-outline" onclick="selectFoodResult(${index})">선택</button>
           </div>

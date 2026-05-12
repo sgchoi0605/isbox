@@ -2,7 +2,6 @@
 const state = {
   user: null,
   ingredients: [],
-  recipes: [],
   communityPosts: [],
   expiringItems: 0,
   level: 1,
@@ -10,6 +9,119 @@ const state = {
 };
 
 const API_BASE_URL = 'http://127.0.0.1:8080';
+
+const TOAST_MESSAGE_TRANSLATIONS = Object.freeze({
+  'Please enter email and password.': '이메일과 비밀번호를 입력해주세요.',
+  'Please fill in all fields.': '모든 필드를 입력해주세요.',
+  'Please fill in all required fields.': '필수 항목을 모두 입력해주세요.',
+  'Please agree to the terms.': '약관에 동의해주세요.',
+  'You must agree to the terms.': '약관에 동의해주세요.',
+  'Invalid email format.': '이메일 형식이 올바르지 않습니다.',
+  'Password must be at least 8 characters.': '비밀번호는 최소 8자 이상이어야 합니다.',
+  'Passwords do not match.': '비밀번호가 일치하지 않습니다.',
+  'New password must be different.': '새 비밀번호는 현재 비밀번호와 달라야 합니다.',
+  'Current password is incorrect.': '현재 비밀번호가 올바르지 않습니다.',
+  'Email is already registered.': '이미 가입된 이메일입니다.',
+  'Unauthorized.': '로그인이 필요합니다.',
+  'Invalid action type.': '잘못된 작업 유형입니다.',
+  'Invalid storage value.': '보관 위치 값이 올바르지 않습니다.',
+  'Invalid expiry date format.': '유통기한 형식이 올바르지 않습니다.',
+  'Invalid post type filter.': '게시글 필터 값이 올바르지 않습니다.',
+  'Type must be share or exchange.': '게시글 유형은 나눔 또는 교환이어야 합니다.',
+  'Title is required.': '제목을 입력해주세요.',
+  'Title must be 100 characters or fewer.': '제목은 100자 이하여야 합니다.',
+  'Content is required.': '내용을 입력해주세요.',
+  'Location must be 100 characters or fewer.': '거래 위치는 100자 이하여야 합니다.',
+  'Keyword is required.': '검색어를 입력해주세요.',
+  'Ingredient id is required.': '재료 ID가 필요합니다.',
+  'Post id is required.': '게시글 ID가 필요합니다.',
+  'Ingredient not found.': '재료를 찾을 수 없습니다.',
+  'Post not found.': '게시글을 찾을 수 없습니다.',
+  'You can delete only your own post.': '본인이 작성한 게시글만 삭제할 수 있습니다.',
+  'Required ingredient fields are missing.': '필수 재료 항목이 누락되었습니다.',
+  'Ingredient field length exceeds limit.': '재료 입력 길이가 제한을 초과했습니다.',
+  'Failed to create member.': '회원 생성에 실패했습니다.',
+  'Failed to load member.': '회원 정보를 불러오지 못했습니다.',
+  'Failed to load updated ingredient.': '수정된 재료 정보를 불러오지 못했습니다.',
+  'Failed to create ingredient.': '재료 등록에 실패했습니다.',
+  'Failed to update ingredient.': '재료 수정에 실패했습니다.',
+  'Failed to delete ingredient.': '재료 삭제에 실패했습니다.',
+  'Failed to search foods.': '식품 검색에 실패했습니다.',
+  'Failed to create post.': '게시글 등록에 실패했습니다.',
+  'Failed to load ingredients.': '재료 목록을 불러오지 못했습니다.',
+  'Failed to load community posts.': '게시글을 불러오지 못했습니다.',
+  'Failed to delete post.': '게시글 삭제에 실패했습니다.',
+  'Failed to update experience.': '경험치 업데이트에 실패했습니다.',
+  'Database error during signup.': '회원가입 중 데이터베이스 오류가 발생했습니다.',
+  'Server error during signup.': '회원가입 중 서버 오류가 발생했습니다.',
+  'Server error during login.': '로그인 중 서버 오류가 발생했습니다.',
+  'Database error while updating profile.': '프로필 수정 중 데이터베이스 오류가 발생했습니다.',
+  'Server error while updating profile.': '프로필 수정 중 서버 오류가 발생했습니다.',
+  'Server error while updating password.': '비밀번호 변경 중 서버 오류가 발생했습니다.',
+  'Server error while updating experience.': '경험치 업데이트 중 서버 오류가 발생했습니다.',
+  'Server error while loading ingredients.': '재료 목록 조회 중 서버 오류가 발생했습니다.',
+  'Server error while creating ingredient.': '재료 등록 중 서버 오류가 발생했습니다.',
+  'Server error while updating ingredient.': '재료 수정 중 서버 오류가 발생했습니다.',
+  'Server error while deleting ingredient.': '재료 삭제 중 서버 오류가 발생했습니다.',
+  'Database error while loading posts.': '게시글 조회 중 데이터베이스 오류가 발생했습니다.',
+  'Server error while loading posts.': '게시글 조회 중 서버 오류가 발생했습니다.',
+  'Database error while creating post.': '게시글 등록 중 데이터베이스 오류가 발생했습니다.',
+  'Server error while creating post.': '게시글 등록 중 서버 오류가 발생했습니다.',
+  'Database error while deleting post.': '게시글 삭제 중 데이터베이스 오류가 발생했습니다.',
+  'Server error while deleting post.': '게시글 삭제 중 서버 오류가 발생했습니다.',
+  'Invalid response from nutrition public API.': '영양 정보 공공 API 응답 형식이 올바르지 않습니다.',
+  'Nutrition public API returned error.': '영양 정보 공공 API에서 오류를 반환했습니다.',
+  'Login failed.': '로그인에 실패했습니다.',
+  'Signup failed.': '회원가입에 실패했습니다.',
+  'Invalid ingredient response.': '재료 응답 형식이 올바르지 않습니다.',
+  'Profile updated.': '프로필이 업데이트되었습니다.',
+  'Password updated.': '비밀번호가 변경되었습니다.',
+  'Experience updated.': '경험치가 업데이트되었습니다.',
+  'Ingredients loaded.': '재료 목록을 불러왔습니다.',
+  'Ingredient created.': '재료가 추가되었습니다.',
+  'Ingredient updated.': '재료가 수정되었습니다.',
+  'Ingredient deleted.': '재료가 삭제되었습니다.',
+  'Posts loaded.': '게시글을 불러왔습니다.',
+  'Post created.': '게시글이 등록되었습니다.',
+  'Post deleted.': '게시글이 삭제되었습니다.',
+  'Signup success.': '회원가입이 완료되었습니다.',
+  'Login success.': '로그인되었습니다.',
+  'Login success!': '로그인되었습니다.',
+  'Signup success!': '회원가입이 완료되었습니다.',
+  'Logged out.': '로그아웃되었습니다.'
+});
+
+function isLikelyEnglishMessage(message) {
+  return /[A-Za-z]/.test(message) && !/[가-힣]/.test(message);
+}
+
+function translateToastMessage(message, type = 'info') {
+  const normalized = typeof message === 'string' ? message.trim() : '';
+  if (!normalized) {
+    return type === 'error'
+      ? '오류가 발생했습니다. 잠시 후 다시 시도해주세요.'
+      : '';
+  }
+
+  const translated = TOAST_MESSAGE_TRANSLATIONS[normalized];
+  if (translated) {
+    return translated;
+  }
+
+  if (normalized.startsWith('Failed to call nutrition public API.')) {
+    return '영양 정보 공공 API 호출에 실패했습니다.';
+  }
+
+  if (normalized.startsWith('Nutrition public API error (')) {
+    return '영양 정보 공공 API 오류가 발생했습니다.';
+  }
+
+  if (type === 'error' && isLikelyEnglishMessage(normalized)) {
+    return '오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+  }
+
+  return normalized;
+}
 
 async function parseJsonSafe(response) {
   try {
@@ -47,8 +159,18 @@ async function putJson(path, body) {
   return { response, data };
 }
 
+async function getJson(path) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'GET',
+    credentials: 'include'
+  });
+
+  const data = await parseJsonSafe(response);
+  return { response, data };
+}
+
 function buildMemberHeader() {
-  const memberId = state.user?.memberId ?? storage.get('user')?.memberId;
+  const memberId = state.user?.memberId;
   if (!memberId) {
     return {};
   }
@@ -93,16 +215,16 @@ function setAuthenticatedUser(member) {
   };
   state.level = level;
   state.exp = exp;
-  storage.set('user', state.user);
 }
 
 // Toast 알림
 function showToast(message, type = 'info') {
   const toast = document.getElementById('toast');
   if (!toast) return;
+  const translatedMessage = translateToastMessage(message, type);
 
   toast.className = `toast ${type} active`;
-  toast.querySelector('.toast-message').textContent = message;
+  toast.querySelector('.toast-message').textContent = translatedMessage;
 
   setTimeout(() => {
     toast.classList.remove('active');
@@ -150,7 +272,7 @@ function closeNotificationPanel() {
 // 사용자 인증
 async function login(email, password) {
   if (!email || !password) {
-    showToast('Please enter email and password.', 'error');
+    showToast('이메일과 비밀번호를 입력해주세요.', 'error');
     return false;
   }
 
@@ -161,12 +283,12 @@ async function login(email, password) {
     });
 
     if (!response.ok || !data || data.ok === false) {
-      throw new Error(data?.message || 'Login failed.');
+      throw new Error(data?.message || '로그인에 실패했습니다.');
     }
 
     setAuthenticatedUser(data.member);
 
-    showToast('Login success!', 'success');
+    showToast('로그인되었습니다.', 'success');
     setTimeout(() => {
       window.location.href = 'home.html';
     }, 500);
@@ -181,22 +303,22 @@ async function signup(name, email, password, confirmPassword) {
   const agreeTerms = document.getElementById('signupAgreeTerms')?.checked || false;
 
   if (!name || !email || !password || !confirmPassword) {
-    showToast('Please fill in all fields.', 'error');
+    showToast('모든 필드를 입력해주세요.', 'error');
     return false;
   }
 
   if (!agreeTerms) {
-    showToast('Please agree to the terms.', 'error');
+    showToast('약관에 동의해주세요.', 'error');
     return false;
   }
 
   if (password !== confirmPassword) {
-    showToast('Passwords do not match.', 'error');
+    showToast('비밀번호가 일치하지 않습니다.', 'error');
     return false;
   }
 
   if (password.length < 8) {
-    showToast('Password must be at least 8 characters.', 'error');
+    showToast('비밀번호는 최소 8자 이상이어야 합니다.', 'error');
     return false;
   }
 
@@ -210,12 +332,12 @@ async function signup(name, email, password, confirmPassword) {
     });
 
     if (!response.ok || !data || data.ok === false) {
-      throw new Error(data?.message || 'Signup failed.');
+      throw new Error(data?.message || '회원가입에 실패했습니다.');
     }
 
     setAuthenticatedUser(data.member);
 
-    showToast('Signup success!', 'success');
+    showToast('회원가입이 완료되었습니다.', 'success');
     setTimeout(() => {
       window.location.href = 'home.html';
     }, 500);
@@ -236,9 +358,8 @@ async function logout() {
     // Ignore network errors on logout.
   }
 
-  storage.remove('user');
   state.user = null;
-  showToast('Logged out.', 'success');
+  showToast('로그아웃되었습니다.', 'success');
 
   setTimeout(() => {
     window.location.href = 'index.html';
@@ -253,19 +374,12 @@ async function checkAuth() {
 
     if (!response.ok || !data || data.ok === false) {
       state.user = null;
-      storage.remove('user');
       return false;
     }
 
     setAuthenticatedUser(data.member);
     return true;
   } catch (_error) {
-    const user = storage.get('user');
-    if (user && user.loggedIn) {
-      state.user = user;
-      return true;
-    }
-
     state.user = null;
     return false;
   }
@@ -409,6 +523,124 @@ async function changePassword() {
   }
 }
 
+async function searchMemberByEmail(email) {
+  const normalizedEmail = String(email || '').trim();
+  if (!normalizedEmail) {
+    throw new Error('이메일을 입력해주세요.');
+  }
+
+  const { response, data } = await getJson(
+    `/api/friends/search?email=${encodeURIComponent(normalizedEmail)}`
+  );
+
+  if (!response.ok || !data || data.ok === false || !data.member) {
+    throw new Error(data?.message || '사용자 검색에 실패했습니다.');
+  }
+
+  return data.member;
+}
+
+async function sendFriendRequest(email) {
+  const normalizedEmail = String(email || '').trim();
+  if (!normalizedEmail) {
+    throw new Error('이메일을 입력해주세요.');
+  }
+
+  const { response, data } = await postJson('/api/friends/requests', {
+    email: normalizedEmail
+  });
+
+  if (!response.ok || !data || data.ok === false) {
+    throw new Error(data?.message || '친구 요청 전송에 실패했습니다.');
+  }
+
+  return data.request || null;
+}
+
+async function loadFriends() {
+  const { response, data } = await getJson('/api/friends');
+
+  if (!response.ok || !data || data.ok === false) {
+    throw new Error(data?.message || '친구 목록을 불러오지 못했습니다.');
+  }
+
+  return Array.isArray(data.friends) ? data.friends : [];
+}
+
+async function loadIncomingFriendRequests() {
+  const { response, data } = await getJson('/api/friends/requests/incoming');
+
+  if (!response.ok || !data || data.ok === false) {
+    throw new Error(data?.message || '받은 요청 목록을 불러오지 못했습니다.');
+  }
+
+  return Array.isArray(data.requests) ? data.requests : [];
+}
+
+async function loadOutgoingFriendRequests() {
+  const { response, data } = await getJson('/api/friends/requests/outgoing');
+
+  if (!response.ok || !data || data.ok === false) {
+    throw new Error(data?.message || '보낸 요청 목록을 불러오지 못했습니다.');
+  }
+
+  return Array.isArray(data.requests) ? data.requests : [];
+}
+
+async function acceptFriendRequest(friendshipId) {
+  const normalizedId = Number(friendshipId);
+  if (!normalizedId) {
+    throw new Error('잘못된 친구 요청 ID입니다.');
+  }
+
+  const { response, data } = await postJson(
+    `/api/friends/requests/${encodeURIComponent(normalizedId)}/accept`,
+    {}
+  );
+
+  if (!response.ok || !data || data.ok === false) {
+    throw new Error(data?.message || '친구 요청 수락에 실패했습니다.');
+  }
+
+  return data.request || null;
+}
+
+async function rejectFriendRequest(friendshipId) {
+  const normalizedId = Number(friendshipId);
+  if (!normalizedId) {
+    throw new Error('잘못된 친구 요청 ID입니다.');
+  }
+
+  const { response, data } = await postJson(
+    `/api/friends/requests/${encodeURIComponent(normalizedId)}/reject`,
+    {}
+  );
+
+  if (!response.ok || !data || data.ok === false) {
+    throw new Error(data?.message || '친구 요청 거절에 실패했습니다.');
+  }
+
+  return data.request || null;
+}
+
+async function cancelFriendRequest(friendshipId) {
+  const normalizedId = Number(friendshipId);
+  if (!normalizedId) {
+    throw new Error('잘못된 친구 요청 ID입니다.');
+  }
+
+  const { response, data } = await postJson(
+    `/api/friends/requests/${encodeURIComponent(normalizedId)}/cancel`,
+    {}
+  );
+
+  if (!response.ok || !data || data.ok === false) {
+    throw new Error(data?.message || '친구 요청 취소에 실패했습니다.');
+  }
+
+  return data.request || null;
+}
+
 function normalizeIngredientForClient(ingredient) {
   if (!ingredient) {
     return null;
@@ -438,18 +670,11 @@ function normalizeIngredientForClient(ingredient) {
 
 function saveIngredients(ingredients) {
   const safeIngredients = Array.isArray(ingredients) ? ingredients : [];
-  storage.set('ingredients', safeIngredients);
   state.ingredients = safeIngredients;
 }
 
 function getCachedIngredients() {
-  if (Array.isArray(state.ingredients) && state.ingredients.length > 0) {
-    return state.ingredients;
-  }
-
-  const cached = storage.get('ingredients') || [];
-  state.ingredients = cached;
-  return cached;
+  return Array.isArray(state.ingredients) ? state.ingredients : [];
 }
 
 async function loadIngredients() {
@@ -462,7 +687,7 @@ async function loadIngredients() {
 
     const body = await parseJsonSafe(response);
     if (!response.ok || !body || body.ok === false) {
-      throw new Error(body?.message || 'Failed to load ingredients.');
+      throw new Error(body?.message || '재료 목록을 불러오지 못했습니다.');
     }
 
     const ingredients = (body.ingredients || [])
@@ -515,12 +740,12 @@ async function addIngredient(ingredient) {
 
   const body = await parseJsonSafe(response);
   if (!response.ok || !body || body.ok === false) {
-    throw new Error(body?.message || 'Failed to create ingredient.');
+    throw new Error(body?.message || '재료 등록에 실패했습니다.');
   }
 
   const created = normalizeIngredientForClient(body.ingredient);
   if (!created) {
-    throw new Error('Invalid ingredient response.');
+    throw new Error('재료 응답 형식이 올바르지 않습니다.');
   }
   const ingredients = getCachedIngredients().slice();
   ingredients.push(created);
@@ -548,12 +773,12 @@ async function updateIngredient(ingredientId, ingredient) {
 
   const body = await parseJsonSafe(response);
   if (!response.ok || !body || body.ok === false) {
-    throw new Error(body?.message || 'Failed to update ingredient.');
+    throw new Error(body?.message || '재료 수정에 실패했습니다.');
   }
 
   const updated = normalizeIngredientForClient(body.ingredient);
   if (!updated) {
-    throw new Error('Invalid ingredient response.');
+    throw new Error('재료 응답 형식이 올바르지 않습니다.');
   }
   const ingredients = getCachedIngredients().map(item =>
     String(item.id) === String(updated.id) ? updated : item
@@ -574,7 +799,7 @@ async function deleteIngredient(id) {
 
   const body = await parseJsonSafe(response);
   if (!response.ok || !body || body.ok === false) {
-    throw new Error(body?.message || 'Failed to delete ingredient.');
+    throw new Error(body?.message || '재료 삭제에 실패했습니다.');
   }
 
   const ingredients = getCachedIngredients().filter(item => String(item.id) !== String(id));
@@ -599,7 +824,7 @@ async function searchProcessedFoods(keyword) {
 
   const body = await parseJsonSafe(response);
   if (!response.ok || !body || body.ok === false) {
-    throw new Error(body?.message || 'Failed to search foods.');
+    throw new Error(body?.message || '식품 검색에 실패했습니다.');
   }
 
   return body.foods || [];
@@ -676,7 +901,7 @@ async function loadCommunityPosts(filter = 'all') {
 
   const body = await parseJsonSafe(response);
   if (!response.ok || !body || body.ok === false) {
-    throw new Error(body?.message || 'Failed to load community posts.');
+    throw new Error(body?.message || '게시글을 불러오지 못했습니다.');
   }
 
   state.communityPosts = body.posts || [];
@@ -707,7 +932,7 @@ async function addCommunityPost(post) {
 
   const body = await parseJsonSafe(response);
   if (!response.ok || !body || body.ok === false) {
-    throw new Error(body?.message || 'Failed to create post.');
+    throw new Error(body?.message || '게시글 등록에 실패했습니다.');
   }
 
   await addExp('COMMUNITY_POST_CREATE', '커뮤니티 게시글 작성');
@@ -726,7 +951,7 @@ async function deleteCommunityPost(postId) {
 
   const body = await parseJsonSafe(response);
   if (!response.ok || !body || body.ok === false) {
-    throw new Error(body?.message || 'Failed to delete post.');
+    throw new Error(body?.message || '게시글 삭제에 실패했습니다.');
   }
 
   showToast('게시글이 삭제되었습니다.', 'success');
@@ -767,71 +992,8 @@ function recommendRecipes(selectedIngredientIds) {
     return [];
   }
 
-  const selectedNames = selectedItems.slice(0, 3).map(item => item.name).join(', ');
-  const mockRecipes = [
-    {
-      id: '1',
-      name: '간단 볶음밥',
-      description: `${selectedNames}을(를) 활용한 빠른 볶음밥`,
-      cookTime: '15분',
-      servings: '2인분',
-      difficulty: '쉬움',
-      ingredients: [
-        '밥 2공기',
-        ...selectedItems.slice(0, 3).map(i => `${i.name} ${i.quantity}${i.unit}`),
-        '간장 2스푼',
-        '참기름 1스푼'
-      ],
-      steps: [
-        '재료를 먹기 좋은 크기로 손질합니다.',
-        '팬에 기름을 두르고 재료를 볶습니다.',
-        '밥을 넣고 골고루 섞어 볶습니다.',
-        '간장과 참기름으로 마무리합니다.'
-      ]
-    },
-    {
-      id: '2',
-      name: '야채 샐러드',
-      description: `${selectedNames}을(를) 활용한 가벼운 샐러드`,
-      cookTime: '10분',
-      servings: '1인분',
-      difficulty: '쉬움',
-      ingredients: [
-        ...selectedItems.slice(0, 4).map(i => `${i.name} ${i.quantity}${i.unit}`),
-        '올리브오일 2스푼',
-        '레몬즙 1스푼'
-      ],
-      steps: [
-        '재료를 깨끗이 씻습니다.',
-        '한입 크기로 썰어 그릇에 담습니다.',
-        '드레싱 재료를 섞어 뿌립니다.'
-      ]
-    },
-    {
-      id: '3',
-      name: '재료 듬뿍 국물요리',
-      description: `${selectedNames}을(를) 넣은 따뜻한 국물요리`,
-      cookTime: '25분',
-      servings: '3인분',
-      difficulty: '보통',
-      ingredients: [
-        '물 5컵',
-        ...selectedItems.slice(0, 3).map(i => `${i.name} ${i.quantity}${i.unit}`),
-        '다진 마늘 1스푼',
-        '국간장 2스푼'
-      ],
-      steps: [
-        '냄비에 물을 끓입니다.',
-        '재료를 넣고 중불에서 익힙니다.',
-        '간을 맞추고 5분 더 끓입니다.'
-      ]
-    }
-  ];
-
-  state.recipes = mockRecipes;
-  void addExp('RECIPE_RECOMMEND', 'AI 요리 추천 이용');
-
-  return mockRecipes;
+  showToast('레시피 추천 데이터는 아직 백엔드와 연동되지 않았습니다.', 'info');
+  return [];
 }
 
 function switchTab(tabName) {
@@ -864,13 +1026,8 @@ function formatDate(dateString) {
 
 // 레벨 시스템
 function loadLevelData() {
-  const storedUser = storage.get('user');
-  if (!state.user && storedUser && storedUser.loggedIn) {
-    state.user = storedUser;
-  }
-
-  const levelSource = state.user?.level ?? storedUser?.level ?? 1;
-  const expSource = state.user?.exp ?? storedUser?.exp ?? 0;
+  const levelSource = state.user?.level ?? 1;
+  const expSource = state.user?.exp ?? 0;
   const level = Number(levelSource) > 0 ? Number(levelSource) : 1;
   const exp = Number(expSource) >= 0 ? Number(expSource) : 0;
 
@@ -884,7 +1041,6 @@ function loadLevelData() {
       exp,
       loggedIn: true
     };
-    storage.set('user', state.user);
   }
 
   return { level, exp };
@@ -908,7 +1064,7 @@ async function addExp(actionType, actionName) {
     });
 
     if (!response.ok || !data || data.ok === false || !data.member) {
-      throw new Error(data?.message || 'Failed to update experience.');
+      throw new Error(data?.message || '경험치 업데이트에 실패했습니다.');
     }
 
     setAuthenticatedUser(data.member);
@@ -920,9 +1076,9 @@ async function addExp(actionType, actionName) {
     const newLevel = Number(data.newLevel || currentLevel);
 
     if (newLevel > previousLevel) {
-      showToast(`레벨업! Lv.${previousLevel} -> Lv.${newLevel}\n${actionName}으로 레벨이 올랐습니다.`, 'success');
+      showToast(`레벨업! 레벨 ${previousLevel} -> 레벨 ${newLevel}\n${actionName}으로 레벨이 올랐습니다.`, 'success');
     } else if (awardedExp > 0) {
-      showToast(`+${awardedExp} EXP\n${actionName}`, 'success');
+      showToast(`+${awardedExp} 경험치\n${actionName}`, 'success');
     }
 
     return true;
@@ -1066,6 +1222,14 @@ window.app = {
   cancelProfileEdit,
   updateProfile,
   changePassword,
+  searchMemberByEmail,
+  sendFriendRequest,
+  loadFriends,
+  loadIncomingFriendRequests,
+  loadOutgoingFriendRequests,
+  acceptFriendRequest,
+  rejectFriendRequest,
+  cancelFriendRequest,
   loadIngredients,
   addIngredient,
   updateIngredient,

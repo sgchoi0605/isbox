@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "../controllers/MemberController.h"
+#include "../controllers/FriendController.h"
 #include "../controllers/BoardController.h"
 #include "../controllers/IngredientController.h"
 
@@ -129,8 +130,11 @@ int main()
     registerApiCorsPreflight();
 
     // 로그인/회원가입/세션 확인 API를 먼저 등록한다.
-    auth::MemberController memberController;
+    auth::MemberService memberService;
+    auth::MemberController memberController(memberService);
     memberController.registerHandlers();
+    friendship::FriendController friendController(memberService);
+    friendController.registerHandlers();
     // 게시글 조회/생성/삭제 엔드포인트를 등록한다.
     board::BoardController boardController;
     boardController.registerHandlers();

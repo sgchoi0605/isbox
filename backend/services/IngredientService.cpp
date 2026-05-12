@@ -4,11 +4,15 @@
 #include <drogon/utils/Utilities.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <regex>
+#include <stdexcept>
+#include <thread>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -233,7 +237,261 @@ std::vector<Json::Value> extractRows(const Json::Value &root)
     return out;
 }
 
+bool looksLikePercentEncoded(const std::string &value)
+{
+    // Avoid double-encoding already encoded query fragments such as %EC%8B...
+    for (std::size_t i = 0; i + 2 < value.size(); ++i)
+    {
+        if (value[i] != '%')
+        {
+            continue;
+        }
+
+        const auto h1 = static_cast<unsigned char>(value[i + 1]);
+        const auto h2 = static_cast<unsigned char>(value[i + 2]);
+        if (std::isxdigit(h1) != 0 && std::isxdigit(h2) != 0)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 }  // 익명 네임스페이스
+
+namespace
+{
+
+std::string toLowerAscii(std::string value)
+{
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return value;
+}
+
+std::string trimCopy(std::string value)
+{
+    const auto notSpace = [](unsigned char ch) { return !std::isspace(ch); };
+    value.erase(value.begin(),
+                std::find_if(value.begin(), value.end(), notSpace));
+    value.erase(
+        std::find_if(value.rbegin(), value.rend(), notSpace).base(), value.end());
+    return value;
+}
+
+std::optional<std::string> normalizeImportYnForApi(
+    const std::optional<std::string> &value)
+{
+    if (!value.has_value())
+    {
+        return std::nullopt;
+    }
+
+    const auto normalized = toLowerAscii(trimCopy(*value));
+    if (normalized == "y")
+    {
+        return "Y";
+    }
+    if (normalized == "n")
+    {
+        return "N";
+    }
+    return std::nullopt;
+}
+
+std::optional<std::uint64_t> optionalJsonUInt64(const Json::Value &value)
+{
+    if (value.isNull())
+    {
+        return std::nullopt;
+    }
+
+    try
+    {
+        if (value.isUInt64())
+        {
+            return value.asUInt64();
+        }
+        if (value.isUInt())
+        {
+            return static_cast<std::uint64_t>(value.asUInt());
+        }
+        if (value.isNumeric())
+        {
+            const auto raw = value.asDouble();
+            if (raw < 0.0)
+            {
+                return std::nullopt;
+            }
+            return static_cast<std::uint64_t>(raw);
+        }
+        if (value.isString())
+        {
+            auto text = value.asString();
+            text.erase(
+                std::remove_if(text.begin(), text.end(), [](unsigned char ch) {
+                    return std::isspace(ch) != 0 || ch == ',';
+                }),
+                text.end());
+            if (text.empty())
+            {
+                return std::nullopt;
+            }
+            return static_cast<std::uint64_t>(std::stoull(text));
+        }
+    }
+    catch (const std::exception &)
+    {
+        return std::nullopt;
+    }
+
+    return std::nullopt;
+}
+
+std::optional<std::string> extractPublicApiErrorMessage(const Json::Value &body)
+{
+    if (!body.isMember("response") || !body["response"].isObject())
+    {
+        return std::nullopt;
+    }
+
+    const auto &responseRoot = body["response"];
+    if (!responseRoot.isMember("header") || !responseRoot["header"].isObject())
+    {
+        return std::nullopt;
+    }
+
+    const auto &header = responseRoot["header"];
+    const auto resultCode =
+        firstStringFromKeys(header, {"resultCode", "RESULT_CODE"});
+    const auto resultMsg = firstStringFromKeys(header, {"resultMsg", "RESULT_MSG"});
+    if (!resultCode.has_value() || *resultCode == "00")
+    {
+        return std::nullopt;
+    }
+
+    return "Nutrition public API error (" + *resultCode +
+           "): " + resultMsg.value_or("Unknown error.");
+}
+
+std::optional<std::uint64_t> extractTotalCount(const Json::Value &body)
+{
+    if (!body.isMember("response") || !body["response"].isObject())
+    {
+        return std::nullopt;
+    }
+
+    const auto &responseRoot = body["response"];
+    if (!responseRoot.isMember("body") || !responseRoot["body"].isObject())
+    {
+        return std::nullopt;
+    }
+
+    const auto &bodyNode = responseRoot["body"];
+    if (!bodyNode.isMember("totalCount"))
+    {
+        return std::nullopt;
+    }
+
+    return optionalJsonUInt64(bodyNode["totalCount"]);
+}
+
+std::string buildPublicNutritionApiPath(
+    const std::string &serviceKey,
+    std::uint64_t pageNo,
+    std::uint64_t numOfRows,
+    const std::optional<std::string> &foodKeyword)
+{
+    std::string path =
+        "/openapi/tn_pubr_public_nutri_process_info_api"
+        "?serviceKey=" +
+        drogon::utils::urlEncodeComponent(serviceKey) + "&type=json&pageNo=" +
+        std::to_string(pageNo) + "&numOfRows=" + std::to_string(numOfRows);
+
+    if (foodKeyword.has_value())
+    {
+        const auto encodedKeyword = looksLikePercentEncoded(*foodKeyword)
+                                        ? *foodKeyword
+                                        : drogon::utils::urlEncodeComponent(*foodKeyword);
+        path += "&foodNm=" + encodedKeyword;
+    }
+
+    return path;
+}
+
+drogon::HttpClientPtr makePublicNutritionApiClient()
+{
+    // Some Windows environments fail hostname resolution in Drogon's async resolver
+    // and return ReqResult::BadServerAddress. Connect by IP and pin Host header.
+    // validateCert=false is required because TLS cert CN is the domain, not raw IP.
+    return drogon::HttpClient::newHttpClient("https://27.101.215.193",
+                                             nullptr,
+                                             false,
+                                             false);
+}
+
+std::vector<ingredient::ProcessedFoodSearchItemDTO> mapRowsToFoods(
+    const std::vector<Json::Value> &rows,
+    bool dedupeByFoodName)
+{
+    std::vector<ingredient::ProcessedFoodSearchItemDTO> foods;
+    foods.reserve(rows.size());
+
+    std::unordered_set<std::string> seenFoodNames;
+    if (dedupeByFoodName)
+    {
+        seenFoodNames.reserve(rows.size());
+    }
+
+    for (const auto &row : rows)
+    {
+        auto foodCode = firstStringFromKeys(row, {"foodCd", "FOOD_CD"});
+        auto foodName = firstStringFromKeys(row, {"foodNm", "FOOD_NM"});
+        if (!foodCode.has_value() || !foodName.has_value())
+        {
+            continue;
+        }
+
+        if (dedupeByFoodName && !seenFoodNames.insert(*foodName).second)
+        {
+            continue;
+        }
+
+        ingredient::ProcessedFoodSearchItemDTO dto;
+        dto.foodCode = *foodCode;
+        dto.foodName = *foodName;
+        dto.foodGroupName = firstStringFromKeys(
+            row,
+            {"foodLv6Nm", "foodLv5Nm", "foodLv4Nm", "foodLv3Nm",
+             "foodLv7Nm", "FOOD_LV6_NM", "FOOD_LV5_NM", "FOOD_LV4_NM",
+             "FOOD_LV3_NM", "FOOD_LV7_NM"});
+        dto.nutritionBasisAmount =
+            firstStringFromKeys(row, {"nutConSrtrQua", "NUT_CON_SRTR_QUA"});
+        dto.energyKcal = firstDoubleFromKeys(row, {"enerc", "ENERC"});
+        dto.proteinG = firstDoubleFromKeys(row, {"prot", "PROT"});
+        dto.fatG = firstDoubleFromKeys(row, {"fatce", "FATCE"});
+        dto.carbohydrateG = firstDoubleFromKeys(row, {"chocdf", "CHOCDF"});
+        dto.sugarG = firstDoubleFromKeys(row, {"sugar", "SUGAR"});
+        dto.sodiumMg = firstDoubleFromKeys(row, {"nat", "NAT"});
+        dto.sourceName = firstStringFromKeys(row, {"srcNm", "SRC_NM"});
+        dto.manufacturerName = firstStringFromKeys(row, {"mfrNm", "MFR_NM"});
+        dto.importYn =
+            normalizeImportYnForApi(firstStringFromKeys(row, {"imptYn", "IMPT_YN"}));
+        dto.originCountryName = firstStringFromKeys(row, {"cooNm", "COO_NM"});
+        dto.dataBaseDate =
+            normalizeDataBaseDate(firstStringFromKeys(row, {"crtrYmd", "CRTR_YMD"}));
+        foods.push_back(std::move(dto));
+    }
+
+    return foods;
+}
+
+std::atomic_bool gPublicNutritionSyncStarted{false};
+std::atomic_bool gPublicNutritionSyncRunning{false};
+std::atomic_bool gPublicNutritionSyncFailed{false};
+
+}  // namespace
 
 namespace ingredient
 {
@@ -602,6 +860,200 @@ void IngredientService::searchProcessedFoods(const std::string &keyword,
 {
     ProcessedFoodSearchResultDTO invalidInput;
     const auto normalizedKeyword = trim(keyword);
+    if (normalizedKeyword.empty())
+    {
+        invalidInput.statusCode = 400;
+        invalidInput.message = "Keyword is required.";
+        callback(std::move(invalidInput));
+        return;
+    }
+
+    try
+    {
+        const auto cacheCount = publicNutritionFoodMapper_.countFoods();
+        if (cacheCount == 0U)
+        {
+            startPublicNutritionSyncIfNeeded();
+
+            if (gPublicNutritionSyncRunning.load())
+            {
+                ProcessedFoodSearchResultDTO building;
+                building.statusCode = 503;
+                building.message = "Nutrition index is building. Try again shortly.";
+                callback(std::move(building));
+                return;
+            }
+
+            if (gPublicNutritionSyncFailed.load())
+            {
+                searchProcessedFoodsFromPublicApi(normalizedKeyword,
+                                                  std::move(callback));
+                return;
+            }
+        }
+
+        auto foods = publicNutritionFoodMapper_.searchByKeyword(normalizedKeyword);
+        if (!foods.empty())
+        {
+            ProcessedFoodSearchResultDTO okResult;
+            okResult.ok = true;
+            okResult.statusCode = 200;
+            okResult.message = "Nutrition foods loaded.";
+            okResult.foods = std::move(foods);
+            callback(std::move(okResult));
+            return;
+        }
+
+        const auto postSearchCacheCount = publicNutritionFoodMapper_.countFoods();
+        if (postSearchCacheCount == 0U)
+        {
+            if (gPublicNutritionSyncRunning.load())
+            {
+                ProcessedFoodSearchResultDTO building;
+                building.statusCode = 503;
+                building.message = "Nutrition index is building. Try again shortly.";
+                callback(std::move(building));
+                return;
+            }
+
+            searchProcessedFoodsFromPublicApi(normalizedKeyword, std::move(callback));
+            return;
+        }
+
+        ProcessedFoodSearchResultDTO emptyResult;
+        emptyResult.ok = true;
+        emptyResult.statusCode = 200;
+        emptyResult.message = "Nutrition foods loaded.";
+        callback(std::move(emptyResult));
+    }
+    catch (const std::exception &)
+    {
+        searchProcessedFoodsFromPublicApi(normalizedKeyword, std::move(callback));
+    }
+}
+
+void IngredientService::startPublicNutritionSyncIfNeeded()
+{
+    if (gPublicNutritionSyncRunning.load())
+    {
+        return;
+    }
+
+    bool expected = false;
+    if (!gPublicNutritionSyncStarted.compare_exchange_strong(expected, true))
+    {
+        return;
+    }
+
+    gPublicNutritionSyncRunning.store(true);
+    gPublicNutritionSyncFailed.store(false);
+
+    auto serviceKey = getEnvValue("PUBLIC_NUTRI_SERVICE_KEY");
+    if (!serviceKey.has_value())
+    {
+        serviceKey = getServiceKeyFromLocalFile();
+    }
+
+    if (!serviceKey.has_value())
+    {
+        gPublicNutritionSyncFailed.store(true);
+        gPublicNutritionSyncRunning.store(false);
+        gPublicNutritionSyncStarted.store(false);
+        return;
+    }
+
+    std::thread([serviceKey = *serviceKey]() {
+        try
+        {
+            PublicNutritionFoodMapper mapper;
+            auto client = makePublicNutritionApiClient();
+
+            constexpr std::uint64_t kNumOfRows = 1000;
+            std::uint64_t pageNo = 1;
+            std::uint64_t totalPages = 1;
+            bool totalCountResolved = false;
+
+            while (pageNo <= totalPages)
+            {
+                auto request = drogon::HttpRequest::newHttpRequest();
+                request->setMethod(drogon::Get);
+                request->setPathEncode(false);
+                request->setPath(buildPublicNutritionApiPath(
+                    serviceKey,
+                    pageNo,
+                    kNumOfRows,
+                    std::nullopt));
+                request->addHeader("Host", "api.data.go.kr");
+
+                auto [reqResult, response] = client->sendRequest(request, 20.0);
+                if (reqResult != drogon::ReqResult::Ok || !response)
+                {
+                    throw std::runtime_error("Nutrition index sync request failed.");
+                }
+
+                if (response->statusCode() != drogon::k200OK)
+                {
+                    throw std::runtime_error("Nutrition index sync returned non-200.");
+                }
+
+                const auto body = response->getJsonObject();
+                if (!body)
+                {
+                    throw std::runtime_error("Nutrition index sync returned invalid JSON.");
+                }
+
+                if (const auto apiError = extractPublicApiErrorMessage(*body);
+                    apiError.has_value())
+                {
+                    throw std::runtime_error(*apiError);
+                }
+
+                if (!totalCountResolved)
+                {
+                    if (const auto totalCount = extractTotalCount(*body);
+                        totalCount.has_value())
+                    {
+                        totalPages = (*totalCount + kNumOfRows - 1U) / kNumOfRows;
+                        if (totalPages == 0U)
+                        {
+                            totalPages = 1U;
+                        }
+                    }
+                    totalCountResolved = true;
+                }
+
+                const auto rows = extractRows(*body);
+                mapper.upsertFoods(mapRowsToFoods(rows, false));
+
+                if (rows.empty())
+                {
+                    break;
+                }
+                if (pageNo == totalPages)
+                {
+                    break;
+                }
+
+                ++pageNo;
+            }
+
+            gPublicNutritionSyncFailed.store(false);
+        }
+        catch (const std::exception &)
+        {
+            gPublicNutritionSyncFailed.store(true);
+        }
+
+        gPublicNutritionSyncRunning.store(false);
+    }).detach();
+}
+
+void IngredientService::searchProcessedFoodsFromPublicApi(
+    const std::string &keyword,
+    ProcessedFoodSearchCallback &&callback)
+{
+    ProcessedFoodSearchResultDTO invalidInput;
+    const auto normalizedKeyword = trim(keyword);
 
     // 검색 키워드는 필수다.
     // 공백만 입력한 요청은 외부 API를 호출하지 않고 바로 400으로 끝낸다.
@@ -635,12 +1087,16 @@ void IngredientService::searchProcessedFoods(const std::string &keyword,
 
     // API 키와 검색어를 URL 인코딩해 요청 경로를 만든다.
     // 키나 검색어에 특수문자가 있어도 쿼리 문자열이 깨지지 않게 한다.
+    const auto encodedKeyword = looksLikePercentEncoded(normalizedKeyword)
+                                    ? normalizedKeyword
+                                    : drogon::utils::urlEncodeComponent(
+                                          normalizedKeyword);
     const auto path =
         "/openapi/tn_pubr_public_nutri_process_info_api"
         "?serviceKey=" +
         drogon::utils::urlEncodeComponent(*serviceKey) +
         "&type=json&pageNo=1&numOfRows=10&foodNm=" +
-        drogon::utils::urlEncodeComponent(normalizedKeyword);
+        encodedKeyword;
 
     // Some Windows environments fail hostname resolution in Drogon's async resolver
     // and return ReqResult::BadServerAddress. Connect by IP and pin Host header.
@@ -651,6 +1107,7 @@ void IngredientService::searchProcessedFoods(const std::string &keyword,
                                                     false);
     auto request = drogon::HttpRequest::newHttpRequest();
     request->setMethod(drogon::Get);
+    request->setPathEncode(false);
     request->setPath(path);
     request->addHeader("Host", "api.data.go.kr");
 
@@ -694,8 +1151,35 @@ void IngredientService::searchProcessedFoods(const std::string &keyword,
                 return;
             }
 
+            // Public API can report application errors in JSON while HTTP is 200.
+            if (body->isMember("response") && (*body)["response"].isObject())
+            {
+                const auto &responseRoot = (*body)["response"];
+                if (responseRoot.isMember("header") &&
+                    responseRoot["header"].isObject())
+                {
+                    const auto &header = responseRoot["header"];
+                    const auto resultCode =
+                        firstStringFromKeys(header, {"resultCode", "RESULT_CODE"});
+                    const auto resultMsg =
+                        firstStringFromKeys(header, {"resultMsg", "RESULT_MSG"});
+
+                    if (resultCode.has_value() && *resultCode != "00")
+                    {
+                        result.statusCode = 502;
+                        result.message = "Nutrition public API error (" +
+                                         *resultCode + "): " +
+                                         resultMsg.value_or("Unknown error.");
+                        callback(std::move(result));
+                        return;
+                    }
+                }
+            }
+
             const auto rows = extractRows(*body);
             result.foods.reserve(rows.size());
+            std::unordered_set<std::string> seenFoodNames;
+            seenFoodNames.reserve(rows.size());
 
             for (const auto &row : rows)
             {
@@ -709,6 +1193,10 @@ void IngredientService::searchProcessedFoods(const std::string &keyword,
                 {
                     continue;
                 }
+                if (!seenFoodNames.insert(*foodName).second)
+                {
+                    continue;
+                }
 
                 ProcessedFoodSearchItemDTO dto;
                 dto.foodCode = *foodCode;
@@ -716,9 +1204,9 @@ void IngredientService::searchProcessedFoods(const std::string &keyword,
                 // 식품 분류는 가장 상세한 단계부터 후보 키를 확인한다.
                 dto.foodGroupName = firstStringFromKeys(
                     row,
-                    {"foodLv7Nm", "foodLv6Nm", "foodLv5Nm", "foodLv4Nm",
-                     "foodLv3Nm", "FOOD_LV7_NM", "FOOD_LV6_NM", "FOOD_LV5_NM",
-                     "FOOD_LV4_NM", "FOOD_LV3_NM"});
+                    {"foodLv6Nm", "foodLv5Nm", "foodLv4Nm", "foodLv3Nm",
+                     "foodLv7Nm", "FOOD_LV6_NM", "FOOD_LV5_NM", "FOOD_LV4_NM",
+                     "FOOD_LV3_NM", "FOOD_LV7_NM"});
 
                 // 주요 영양 성분 값을 매핑한다.
                 // 값이 없거나 숫자로 파싱되지 않는 항목은 nullopt로 남긴다.

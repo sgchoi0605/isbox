@@ -15,7 +15,7 @@ namespace auth
 class MemberController
 {
   public:
-    MemberController() = default;
+    explicit MemberController(MemberService &service) : service_(service) {}
 
     // main.cpp에서 호출되어 인증 관련 URL과 handler를 Drogon에 등록한다.
     void registerHandlers();
@@ -53,7 +53,7 @@ class MemberController
     void handleLogout(const drogon::HttpRequestPtr &request, Callback &&callback);
 
     // 입력 검증, 비밀번호 확인, 세션 생성 같은 인증 비즈니스 로직은 서비스에 위임한다.
-    MemberService service_;
+    MemberService &service_;
 };
 
 }  // namespace auth

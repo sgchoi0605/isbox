@@ -258,6 +258,52 @@
         </div>
       </div>
 
+      <!-- Friend Management Card -->
+      <div class="card shadow-lg mb-6" style="border-top: 4px solid #8b5cf6;">
+        <div class="card-header">
+          <h3 class="card-title flex items-center gap-2">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 11h-6"/>
+              <path d="M20 8v6"/>
+            </svg>
+            친구 관리
+          </h3>
+          <p class="card-description">이메일로 친구를 찾고 요청을 관리하세요</p>
+        </div>
+        <div class="card-content" style="display: flex; flex-direction: column; gap: 1rem;">
+          <form onsubmit="event.preventDefault(); searchFriendMember();" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <input
+              type="email"
+              id="friendSearchEmail"
+              class="form-input"
+              placeholder="friend@example.com"
+              style="flex: 1; min-width: 220px;"
+              required
+            >
+            <button type="submit" class="btn btn-outline">검색</button>
+          </form>
+
+          <div id="friendSearchResult" style="display: none;"></div>
+
+          <div style="display: grid; gap: 1rem;">
+            <div>
+              <p class="text-sm font-medium text-gray-700" style="margin-bottom: 0.5rem;">받은 친구 요청</p>
+              <div id="incomingFriendRequests" style="display: grid; gap: 0.5rem;"></div>
+            </div>
+            <div>
+              <p class="text-sm font-medium text-gray-700" style="margin-bottom: 0.5rem;">보낸 친구 요청</p>
+              <div id="outgoingFriendRequests" style="display: grid; gap: 0.5rem;"></div>
+            </div>
+            <div>
+              <p class="text-sm font-medium text-gray-700" style="margin-bottom: 0.5rem;">친구 목록</p>
+              <div id="friendList" style="display: grid; gap: 0.5rem;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Password Change Card -->
       <div class="card shadow-lg" style="border-top: 4px solid #10b981;">
         <div class="card-header">
@@ -379,6 +425,217 @@
       if (userMenu && dropdown && !userMenu.contains(e.target)) {
         dropdown.classList.remove('active');
       }
+    });
+  </script>
+  <script>
+    const friendPageState = {
+      searchedMember: null
+    };
+
+    function escapeFriendHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function renderFriendRows(containerId, items, emptyText, actionRenderer) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+
+      if (!Array.isArray(items) || items.length === 0) {
+        container.innerHTML = `<p class="text-sm text-gray-500">${escapeFriendHtml(emptyText)}</p>`;
+        return;
+      }
+
+      container.innerHTML = items
+        .map(item => {
+          const statusText = String(item.status || '').toUpperCase();
+          const subText = item.respondedAt || item.requestedAt || '';
+          const actions = actionRenderer ? actionRenderer(item) : '';
+
+          return `
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.75rem; border: 1px solid #e5e7eb; border-radius: 0.5rem; background: #ffffff;">
+              <div style="min-width: 0;">
+                <p class="text-sm font-medium text-gray-900">${escapeFriendHtml(item.name || '이름 없음')}</p>
+                <p class="text-sm text-gray-600">${escapeFriendHtml(item.email || '')}</p>
+                <p class="text-xs text-gray-500">${escapeFriendHtml(statusText)} ${subText ? `· ${escapeFriendHtml(subText)}` : ''}</p>
+              </div>
+              ${actions ? `<div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">${actions}</div>` : ''}
+            </div>
+          `;
+        })
+        .join('');
+    }
+
+    function renderFriendSearchResult(member) {
+      const container = document.getElementById('friendSearchResult');
+      if (!container) return;
+
+      if (!member) {
+        container.style.display = 'none';
+        container.innerHTML = '';
+        return;
+      }
+
+      const isSelf = Number(member.memberId) === Number(app.state.user?.memberId);
+      const isActive = String(member.status || '').toUpperCase() === 'ACTIVE';
+
+      let actionHtml = '';
+      if (isSelf) {
+        actionHtml = '<p class="text-sm text-gray-500">본인 계정입니다.</p>';
+      } else if (!isActive) {
+        actionHtml = '<p class="text-sm text-gray-500">비활성 사용자입니다.</p>';
+      } else {
+        actionHtml = '<button class="btn btn-outline btn-sm" onclick="sendFriendRequestToSearchedMember()">친구 요청</button>';
+      }
+
+      container.style.display = 'block';
+      container.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.75rem; border: 1px solid #ddd6fe; border-radius: 0.5rem; background: #faf5ff;">
+          <div style="min-width: 0;">
+            <p class="text-sm font-medium text-gray-900">${escapeFriendHtml(member.name || '이름 없음')}</p>
+            <p class="text-sm text-gray-600">${escapeFriendHtml(member.email || '')}</p>
+          </div>
+          <div>${actionHtml}</div>
+        </div>
+      `;
+    }
+
+    async function refreshFriendSections() {
+      try {
+        const [incomingRequests, outgoingRequests, friends] = await Promise.all([
+          app.loadIncomingFriendRequests(),
+          app.loadOutgoingFriendRequests(),
+          app.loadFriends()
+        ]);
+
+        renderFriendRows(
+          'incomingFriendRequests',
+          incomingRequests,
+          '받은 친구 요청이 없습니다.',
+          request => `
+            <button class="btn btn-sm btn-success" onclick="acceptIncomingRequest(${Number(request.friendshipId)})">수락</button>
+            <button class="btn btn-sm btn-outline" onclick="rejectIncomingRequest(${Number(request.friendshipId)})">거절</button>
+          `
+        );
+
+        renderFriendRows(
+          'outgoingFriendRequests',
+          outgoingRequests,
+          '보낸 친구 요청이 없습니다.',
+          request => `<button class="btn btn-sm btn-outline" onclick="cancelOutgoingRequest(${Number(request.friendshipId)})">취소</button>`
+        );
+
+        renderFriendRows('friendList', friends, '아직 친구가 없습니다.');
+      } catch (error) {
+        app.showToast(error.message, 'error');
+      }
+    }
+
+    async function searchFriendMember() {
+      const input = document.getElementById('friendSearchEmail');
+      if (!input) return;
+
+      const email = input.value.trim();
+      if (!email) {
+        app.showToast('이메일을 입력해주세요.', 'error');
+        return;
+      }
+
+      try {
+        const member = await app.searchMemberByEmail(email);
+        friendPageState.searchedMember = member;
+        renderFriendSearchResult(member);
+      } catch (error) {
+        friendPageState.searchedMember = null;
+        renderFriendSearchResult(null);
+        app.showToast(error.message, 'error');
+      }
+    }
+
+    async function sendFriendRequestToSearchedMember() {
+      const member = friendPageState.searchedMember;
+      if (!member?.email) {
+        app.showToast('요청할 사용자를 먼저 검색해주세요.', 'error');
+        return;
+      }
+
+      try {
+        await app.sendFriendRequest(member.email);
+        app.showToast('친구 요청을 보냈습니다.', 'success');
+        await refreshFriendSections();
+      } catch (error) {
+        app.showToast(error.message, 'error');
+      }
+    }
+
+    async function acceptIncomingRequest(friendshipId) {
+      try {
+        await app.acceptFriendRequest(friendshipId);
+        app.showToast('친구 요청을 수락했습니다.', 'success');
+        await refreshFriendSections();
+      } catch (error) {
+        app.showToast(error.message, 'error');
+      }
+    }
+
+    async function rejectIncomingRequest(friendshipId) {
+      try {
+        await app.rejectFriendRequest(friendshipId);
+        app.showToast('친구 요청을 거절했습니다.', 'success');
+        await refreshFriendSections();
+      } catch (error) {
+        app.showToast(error.message, 'error');
+      }
+    }
+
+    async function cancelOutgoingRequest(friendshipId) {
+      try {
+        await app.cancelFriendRequest(friendshipId);
+        app.showToast('친구 요청을 취소했습니다.', 'success');
+        await refreshFriendSections();
+      } catch (error) {
+        app.showToast(error.message, 'error');
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      void (async function() {
+        if (!app.state.user?.loggedIn) {
+          const ok = await app.checkAuth();
+          if (!ok) {
+            return;
+          }
+        }
+
+        const user = app.state.user;
+        if (user) {
+          const nameInput = document.getElementById('profileName');
+          const emailInput = document.getElementById('profileEmail');
+          if (nameInput) nameInput.value = user.name || '';
+          if (emailInput) emailInput.value = user.email || '';
+
+          const level = Number(user.level) > 0 ? Number(user.level) : 1;
+          const exp = Number(user.exp) >= 0 ? Number(user.exp) : 0;
+          const expToNext = app.getExpToNextLevel(level);
+          const expPercentage = (exp / expToNext) * 100;
+
+          const profileLevel = document.getElementById('profileLevel');
+          const profileExp = document.getElementById('profileExp');
+          const profileExpPercent = document.getElementById('profileExpPercent');
+          const expProgress = document.getElementById('expProgress');
+
+          if (profileLevel) profileLevel.textContent = `레벨 ${level}`;
+          if (profileExp) profileExp.textContent = `경험치 ${exp} / ${expToNext}`;
+          if (profileExpPercent) profileExpPercent.textContent = `${Math.round(expPercentage)}%`;
+          if (expProgress) expProgress.style.width = `${expPercentage}%`;
+        }
+
+        await refreshFriendSections();
+      })();
     });
   </script>
 </body>
