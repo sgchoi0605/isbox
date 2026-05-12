@@ -13,10 +13,13 @@ add_executable(isbox_backend
     controllers/MemberController.cpp
     # 게시판 기능은 컨트롤러-서비스-매퍼 계층으로 나뉘며 모두 같은 백엔드 바이너리에 포함된다.
     controllers/BoardController.cpp
+    controllers/IngredientController.cpp
     services/MemberService.cpp
     services/BoardService.cpp
+    services/IngredientService.cpp
     mappers/MemberMapper.cpp
     mappers/BoardMapper.cpp
+    mappers/IngredientMapper.cpp
 )
 
 target_link_libraries(isbox_backend PRIVATE Drogon::Drogon)

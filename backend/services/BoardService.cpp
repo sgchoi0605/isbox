@@ -11,28 +11,32 @@ namespace board
 BoardListResultDTO BoardService::getPosts(
     const std::optional<std::string> &typeFilter)
 {
-    // 클라이언트의 필터값을 서비스에서 표준화한 뒤 DB가 이해하는 enum 문자열로 넘긴다.
-    // 잘못된 필터는 DB 조회 전에 400 응답으로 끝낸다.
     BoardListResultDTO result;
 
+    // 필요한 경우 클라이언트 필터 값을 DB 열거형 필터로 변환한다.
     std::optional<std::string> dbTypeFilter;
     if (typeFilter.has_value())
     {
         const auto normalized = toLower(trim(*typeFilter));
+
+        // 빈 필터나 "all"은 유형 조건 없이 조회한다는 의미다.
         if (!normalized.empty() && normalized != "all")
         {
+            // 지원하지 않는 필터 값은 DB 조회 전에 거절한다.
             if (!isAllowedType(normalized))
             {
                 result.statusCode = 400;
                 result.message = "Invalid post type filter.";
                 return result;
             }
+
             dbTypeFilter = toDbType(normalized);
         }
     }
 
     try
     {
+        // 실제 DB 조회는 매퍼가 담당한다.
         result.posts = mapper_.findPosts(dbTypeFilter);
         result.ok = true;
         result.statusCode = 200;
@@ -57,10 +61,9 @@ BoardCreateResultDTO BoardService::createPost(
     std::uint64_t memberId,
     const CreateBoardPostRequestDTO &request)
 {
-    // 저장 전에 사용자 입력을 정규화하고 검증한다.
-    // 이 함수가 통과시킨 값만 BoardMapper로 내려가므로 DB 계층은 저장에 집중한다.
     BoardCreateResultDTO result;
 
+    // 세션이 없는 요청은 인증되지 않은 요청으로 처리한다.
     if (memberId == 0)
     {
         result.statusCode = 401;
@@ -68,10 +71,12 @@ BoardCreateResultDTO BoardService::createPost(
         return result;
     }
 
+    // 검증 전에 사용자 입력 문자열을 정규화한다.
     const auto normalizedType = toLower(trim(request.type));
     const auto normalizedTitle = trim(request.title);
     const auto normalizedContent = trim(request.content);
 
+    // 위치는 선택값이며, 공백 제거 후 값이 있을 때만 저장한다.
     std::optional<std::string> normalizedLocation;
     if (request.location.has_value())
     {
@@ -82,6 +87,7 @@ BoardCreateResultDTO BoardService::createPost(
         }
     }
 
+    // 게시글 유형은 지원되는 값이어야 한다.
     if (!isAllowedType(normalizedType))
     {
         result.statusCode = 400;
@@ -89,6 +95,7 @@ BoardCreateResultDTO BoardService::createPost(
         return result;
     }
 
+    // 제목은 필수다.
     if (normalizedTitle.empty())
     {
         result.statusCode = 400;
@@ -96,6 +103,7 @@ BoardCreateResultDTO BoardService::createPost(
         return result;
     }
 
+    // 제목 길이 제한을 확인한다.
     if (normalizedTitle.size() > 100U)
     {
         result.statusCode = 400;
@@ -103,6 +111,7 @@ BoardCreateResultDTO BoardService::createPost(
         return result;
     }
 
+    // 내용은 필수다.
     if (normalizedContent.empty())
     {
         result.statusCode = 400;
@@ -110,6 +119,7 @@ BoardCreateResultDTO BoardService::createPost(
         return result;
     }
 
+    // 선택값인 위치도 최대 길이 제한을 적용한다.
     if (normalizedLocation.has_value() && normalizedLocation->size() > 100U)
     {
         result.statusCode = 400;
@@ -117,6 +127,7 @@ BoardCreateResultDTO BoardService::createPost(
         return result;
     }
 
+    // DB 저장 형식에 맞는 요청 객체를 만든다.
     CreateBoardPostRequestDTO normalizedRequest;
     normalizedRequest.type = toDbType(normalizedType);
     normalizedRequest.title = normalizedTitle;
@@ -156,10 +167,9 @@ BoardCreateResultDTO BoardService::createPost(
 BoardDeleteResultDTO BoardService::deletePost(std::uint64_t memberId,
                                               std::uint64_t postId)
 {
-    // 삭제 요청은 작성자 본인만 허용한다.
-    // 실제 행은 지우지 않고 status를 DELETED로 바꿔 목록 조회에서 제외한다.
     BoardDeleteResultDTO result;
 
+    // 세션이 없는 요청은 인증되지 않은 요청으로 처리한다.
     if (memberId == 0)
     {
         result.statusCode = 401;
@@ -167,6 +177,7 @@ BoardDeleteResultDTO BoardService::deletePost(std::uint64_t memberId,
         return result;
     }
 
+    // 삭제할 게시글 id는 필수다.
     if (postId == 0)
     {
         result.statusCode = 400;
@@ -177,6 +188,8 @@ BoardDeleteResultDTO BoardService::deletePost(std::uint64_t memberId,
     try
     {
         const auto post = mapper_.findById(postId);
+
+        // 존재하지 않거나 이미 삭제된 게시글은 찾을 수 없는 것으로 처리한다.
         if (!post.has_value() || post->status == "deleted")
         {
             result.statusCode = 404;
@@ -184,6 +197,7 @@ BoardDeleteResultDTO BoardService::deletePost(std::uint64_t memberId,
             return result;
         }
 
+        // 작성자 본인만 게시글을 삭제할 수 있다.
         if (post->memberId != memberId)
         {
             result.statusCode = 403;
@@ -191,6 +205,7 @@ BoardDeleteResultDTO BoardService::deletePost(std::uint64_t memberId,
             return result;
         }
 
+        // 상태값을 변경해 소프트 삭제한다.
         mapper_.markPostDeleted(postId);
 
         result.ok = true;
@@ -214,7 +229,7 @@ BoardDeleteResultDTO BoardService::deletePost(std::uint64_t memberId,
 
 std::string BoardService::trim(std::string value)
 {
-    // 제목/본문/위치 검증에서 공백만 있는 입력을 빈 문자열로 판정하기 위한 유틸리티다.
+    // 문자열 앞뒤 공백을 제거하는 공용 유틸리티다.
     const auto notSpace = [](unsigned char ch) { return !std::isspace(ch); };
 
     value.erase(value.begin(),
@@ -227,7 +242,7 @@ std::string BoardService::trim(std::string value)
 
 std::string BoardService::toLower(std::string value)
 {
-    // share, SHARE, Share처럼 섞여 들어온 입력을 같은 값으로 다룬다.
+    // 안정적인 비교를 위해 문자열을 소문자로 정규화한다.
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
         return static_cast<char>(std::tolower(ch));
     });
@@ -236,13 +251,13 @@ std::string BoardService::toLower(std::string value)
 
 bool BoardService::isAllowedType(const std::string &value)
 {
-    // 현재 게시판은 나눔(share)과 교환(exchange) 두 유형만 허용한다.
+    // 현재 게시판은 나눔과 교환 게시글만 지원한다.
     return value == "share" || value == "exchange";
 }
 
 std::string BoardService::toDbType(const std::string &value)
 {
-    // DB 컬럼은 ENUM('SHARE', 'EXCHANGE')이므로 저장 직전에 대문자 enum 값으로 변환한다.
+    // DB 열거형 값은 대문자로 저장한다.
     if (value == "share")
     {
         return "SHARE";
@@ -250,4 +265,4 @@ std::string BoardService::toDbType(const std::string &value)
     return "EXCHANGE";
 }
 
-}  // namespace board
+}  // 게시판 네임스페이스

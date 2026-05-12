@@ -13,20 +13,20 @@
 namespace board
 {
 
-// board_posts 테이블에 매핑되는 Drogon ORM 모델.
-// Mapper 삽입에 필요한 SQL, 바인딩 값, 기본키 갱신 방식을 Drogon Mapper 규약에 맞춰 제공한다.
+// board_posts 테이블 한 행(row)을 표현하는 Drogon ORM 모델.
+// Mapper에서 INSERT/SELECT/UPDATE 시 필요한 SQL 규약 메서드를 함께 제공한다.
 class BoardPostModel final
 {
   public:
-    // Drogon Mapper가 기본키 타입을 알 수 있도록 노출한다.
+    // board_posts.post_id(BIGINT)의 C++ 표현 타입.
     using PrimaryKeyType = std::uint64_t;
 
-    // ORM 삽입과 기본키 갱신에서 사용하는 테이블/기본키 이름이다.
+    // Drogon Mapper가 내부적으로 사용하는 테이블/PK 메타정보.
     inline static const std::string tableName = "board_posts";
     inline static const std::string primaryKeyName = "post_id";
 
-    // 새 게시글을 DB에 삽입할 때 사용하는 생성자다.
-    // postId_는 DB 자동 증가 값으로 채워지기 전이라 0으로 시작한다.
+    // 새 게시글 생성용 생성자.
+    // postId_는 DB AUTO_INCREMENT가 채우므로 0으로 시작한다.
     BoardPostModel(std::uint64_t memberId,
                    std::string postType,
                    std::string title,
@@ -43,8 +43,7 @@ class BoardPostModel final
     {
     }
 
-    // Drogon Row에서 모델을 복원할 때 사용하는 생성자다.
-    // 조회 SQL에서 COALESCE로 location/created_at을 빈 문자열로 보정한 값을 기대한다.
+    // DB 조회 결과(Row)를 모델 객체로 복원하는 생성자.
     explicit BoardPostModel(const drogon::orm::Row &row)
         : postId_(row["post_id"].as<std::uint64_t>()),
           memberId_(row["member_id"].as<std::uint64_t>()),
@@ -57,8 +56,8 @@ class BoardPostModel final
     {
     }
 
-    // 기본키 조회용 SQL이다.
-    // location과 created_at은 null 가능성이 있어 응답 변환이 편하도록 빈 문자열로 보정한다.
+    // PK 기준 단건 조회 SQL.
+    // location/created_at이 NULL일 수 있어 COALESCE로 빈 문자열로 정규화한다.
     static std::string sqlForFindingByPrimaryKey()
     {
         return "SELECT post_id, member_id, post_type, title, content, "
@@ -68,7 +67,7 @@ class BoardPostModel final
                "FROM board_posts WHERE post_id = ?";
     }
 
-    // Drogon Mapper가 컬럼 인덱스를 실제 DB 컬럼명으로 바꿀 때 사용한다.
+    // Drogon Mapper가 컬럼 인덱스를 실제 컬럼명으로 해석할 때 사용한다.
     static std::string getColumnName(size_t index)
     {
         switch (index)
@@ -94,8 +93,8 @@ class BoardPostModel final
         }
     }
 
-    // 삽입 시 사용할 SQL을 반환한다.
-    // 삽입 후 별도 SELECT가 필요 없도록 needSelection은 false로 둔다.
+    // INSERT SQL 템플릿.
+    // needSelection=false: INSERT 직후 추가 SELECT 없이 처리한다.
     std::string sqlForInserting(bool &needSelection) const
     {
         needSelection = false;
@@ -104,37 +103,37 @@ class BoardPostModel final
                "VALUES (?, ?, ?, ?, ?, ?)";
     }
 
-    // 삽입 SQL의 ? 위치에 들어갈 값을 순서대로 바인딩한다.
+    // INSERT SQL의 ? 자리로 들어갈 값을 순서대로 바인딩한다.
     void outputArgs(drogon::orm::internal::SqlBinder &binder) const
     {
         binder << memberId_ << postType_ << title_ << content_ << location_
                << status_;
     }
 
-    // 현재 게시글 수정 기능은 없으므로 수정 대상 컬럼은 비워 둔다.
+    // 현재 게시글 수정 기능이 없으므로 UPDATE 대상 컬럼은 비워둔다.
     std::vector<std::string> updateColumns() const
     {
         return {};
     }
 
-    // updateColumns가 비어 있으므로 수정 바인딩 값도 없다.
+    // updateColumns()가 비어 있어 실제로 바인딩할 값이 없다.
     void updateArgs(drogon::orm::internal::SqlBinder &) const
     {
     }
 
-    // Drogon Mapper가 삽입 이후 기본키를 읽을 때 사용하는 조회 함수다.
+    // 모델의 현재 PK 값을 Mapper에 제공한다.
     std::uint64_t getPrimaryKey() const noexcept
     {
         return postId_;
     }
 
-    // 삽입 성공 후 DB가 발급한 자동 증가 ID를 모델에 반영한다.
+    // INSERT 성공 후 DB가 발급한 PK를 모델에 반영한다.
     void updateId(std::uint64_t id) noexcept
     {
         postId_ = id;
     }
 
-    // 아래 조회 함수들은 서비스/매퍼가 필요한 값만 읽을 수 있게 모델 내부 필드를 감싼다.
+    // 아래 getter들은 서비스/매퍼 계층에서 필요한 필드를 읽을 때 사용한다.
     std::uint64_t postId() const noexcept
     {
         return postId_;
@@ -160,6 +159,7 @@ class BoardPostModel final
         return content_;
     }
 
+    // 내부 저장은 문자열이지만, 외부에는 optional 형태로 노출한다.
     std::optional<std::string> location() const
     {
         if (location_.empty())
@@ -180,8 +180,7 @@ class BoardPostModel final
     }
 
   private:
-    // board_posts 테이블 컬럼을 그대로 보관한다.
-    // location_은 DB에는 빈 문자열로 들어갈 수 있지만, 공개 조회 함수에서는 선택값으로 바꿔 반환한다.
+    // board_posts 각 컬럼과 1:1 대응되는 저장 필드.
     std::uint64_t postId_;
     std::uint64_t memberId_;
     std::string postType_;

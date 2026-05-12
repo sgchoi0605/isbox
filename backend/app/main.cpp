@@ -6,6 +6,7 @@
 
 #include "../controllers/MemberController.h"
 #include "../controllers/BoardController.h"
+#include "../controllers/IngredientController.h"
 
 namespace
 {
@@ -65,7 +66,7 @@ void registerApiCorsPreflight()
                 response->addHeader("Access-Control-Allow-Headers",
                                     "Content-Type, X-Member-Id");
                 response->addHeader("Access-Control-Allow-Methods",
-                                    "GET, POST, DELETE, OPTIONS");
+                                    "GET, POST, PUT, DELETE, OPTIONS");
 
                 adviceCallback(response);
                 return;
@@ -91,6 +92,8 @@ int main()
     // 게시글 조회/생성/삭제 엔드포인트를 등록한다.
     board::BoardController boardController;
     boardController.registerHandlers();
+    ingredient::IngredientController ingredientController;
+    ingredientController.registerHandlers();
 
     drogon::app().registerHandler(
         "/",
