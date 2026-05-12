@@ -19,11 +19,11 @@ add_executable(isbox_backend
     services/FriendService.cpp
     services/BoardService.cpp
     services/IngredientService.cpp
+    services/ProcessedFoodSearchService.cpp
     mappers/MemberMapper.cpp
     mappers/FriendMapper.cpp
     mappers/BoardMapper.cpp
     mappers/IngredientMapper.cpp
-    mappers/PublicNutritionFoodMapper.cpp
 )
 
 target_link_libraries(isbox_backend PRIVATE Drogon::Drogon)

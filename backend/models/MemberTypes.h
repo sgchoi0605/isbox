@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace auth
 {
@@ -39,6 +40,71 @@ class ChangePasswordRequestDTO
     std::string currentPassword;
     std::string newPassword;
     std::string confirmPassword;
+};
+
+class FoodMbtiModel
+{
+  public:
+    std::uint64_t memberId{0};
+    std::string type;
+    std::string title;
+    std::string description;
+    std::string traitsJson;
+    std::string recommendedFoodsJson;
+    std::string completedAt;
+    std::string updatedAt;
+};
+
+class FoodMbtiDTO
+{
+  public:
+    std::string type;
+    std::string title;
+    std::string description;
+    std::vector<std::string> traits;
+    std::vector<std::string> recommendedFoods;
+    std::string completedAt;
+};
+
+class SaveFoodMbtiRequestDTO
+{
+  public:
+    std::string type;
+    std::string title;
+    std::string description;
+    std::vector<std::string> traits;
+    std::vector<std::string> recommendedFoods;
+    std::optional<std::string> completedAt;
+};
+
+class SaveFoodMbtiResultDTO
+{
+  public:
+    bool ok{false};
+    int statusCode{400};
+    std::string message;
+    std::optional<FoodMbtiDTO> foodMbti;
+};
+
+class MemberProfileDTO
+{
+  public:
+    std::uint64_t memberId{0};
+    std::string name;
+    std::string email;
+    unsigned int level{1};
+    unsigned int exp{0};
+    bool isMe{false};
+    std::optional<FoodMbtiDTO> foodMbti;
+};
+
+class MemberProfileResultDTO
+{
+  public:
+    bool ok{false};
+    int statusCode{400};
+    std::string message;
+    std::optional<MemberProfileDTO> profile;
 };
 
 // members 테이블 한 행을 그대로 담는 내부 모델.

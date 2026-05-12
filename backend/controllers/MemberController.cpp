@@ -54,7 +54,30 @@ void MemberController::registerHandlers()
     app.registerHandler(
         "/api/members/profile",
         [this](const drogon::HttpRequestPtr &request, Callback &&callback) {
+            handleGetMyProfile(request, std::move(callback));
+        },
+        {drogon::Get});
+
+    app.registerHandler(
+        "/api/members/{1}/profile",
+        [this](const drogon::HttpRequestPtr &request,
+               Callback &&callback,
+               const std::string &memberIdValue) {
+            handleGetMemberProfile(request, std::move(callback), memberIdValue);
+        },
+        {drogon::Get});
+
+    app.registerHandler(
+        "/api/members/profile",
+        [this](const drogon::HttpRequestPtr &request, Callback &&callback) {
             handleUpdateProfile(request, std::move(callback));
+        },
+        {drogon::Put});
+
+    app.registerHandler(
+        "/api/members/me/food-mbti",
+        [this](const drogon::HttpRequestPtr &request, Callback &&callback) {
+            handleSaveFoodMbti(request, std::move(callback));
         },
         {drogon::Put});
 
@@ -102,6 +125,51 @@ Json::Value MemberController::buildMemberJson(const MemberDTO &member)
     return memberJson;
 }
 
+Json::Value MemberController::buildFoodMbtiJson(const FoodMbtiDTO &foodMbti)
+{
+    Json::Value item;
+    item["type"] = foodMbti.type;
+    item["title"] = foodMbti.title;
+    item["description"] = foodMbti.description;
+
+    Json::Value traits(Json::arrayValue);
+    for (const auto &trait : foodMbti.traits)
+    {
+        traits.append(trait);
+    }
+    item["traits"] = traits;
+
+    Json::Value recommendedFoods(Json::arrayValue);
+    for (const auto &food : foodMbti.recommendedFoods)
+    {
+        recommendedFoods.append(food);
+    }
+    item["recommendedFoods"] = recommendedFoods;
+
+    item["completedAt"] = foodMbti.completedAt;
+    return item;
+}
+
+Json::Value MemberController::buildProfileJson(const MemberProfileDTO &profile)
+{
+    Json::Value item;
+    item["memberId"] = static_cast<Json::UInt64>(profile.memberId);
+    item["name"] = profile.name;
+    item["email"] = profile.email;
+    item["level"] = profile.level;
+    item["exp"] = profile.exp;
+    item["isMe"] = profile.isMe;
+    if (profile.foodMbti.has_value())
+    {
+        item["foodMbti"] = buildFoodMbtiJson(*profile.foodMbti);
+    }
+    else
+    {
+        item["foodMbti"] = Json::nullValue;
+    }
+    return item;
+}
+
 void MemberController::applyCors(const drogon::HttpRequestPtr &request,
                                  const drogon::HttpResponsePtr &response)
 {
@@ -128,6 +196,29 @@ std::string MemberController::extractSessionToken(
 {
     // Drogon이 파싱한 Cookie 헤더에서 isbox_session 값만 꺼낸다.
     return request->getCookie(kSessionCookieName);
+}
+
+std::optional<std::uint64_t> MemberController::parseMemberId(
+    const std::string &memberIdValue)
+{
+    if (memberIdValue.empty())
+    {
+        return std::nullopt;
+    }
+
+    try
+    {
+        const auto parsed = std::stoull(memberIdValue);
+        if (parsed == 0)
+        {
+            return std::nullopt;
+        }
+        return parsed;
+    }
+    catch (const std::exception &)
+    {
+        return std::nullopt;
+    }
 }
 
 std::string MemberController::buildSessionCookie(const std::string &token,
@@ -254,6 +345,58 @@ void MemberController::handleMe(const drogon::HttpRequestPtr &request,
     callback(response);
 }
 
+void MemberController::handleGetMyProfile(const drogon::HttpRequestPtr &request,
+                                          Callback &&callback)
+{
+    const auto result = service_.getMyProfile(extractSessionToken(request));
+
+    Json::Value body;
+    body["ok"] = result.ok;
+    body["message"] = result.message;
+    if (result.profile.has_value())
+    {
+        body["profile"] = buildProfileJson(*result.profile);
+    }
+
+    auto response = drogon::HttpResponse::newHttpJsonResponse(body);
+    response->setStatusCode(static_cast<drogon::HttpStatusCode>(result.statusCode));
+    applyCors(request, response);
+    callback(response);
+}
+
+void MemberController::handleGetMemberProfile(
+    const drogon::HttpRequestPtr &request,
+    Callback &&callback,
+    const std::string &memberIdValue)
+{
+    const auto memberId = parseMemberId(memberIdValue);
+    if (!memberId.has_value())
+    {
+        auto response =
+            drogon::HttpResponse::newHttpJsonResponse(makeErrorBody("Invalid member id."));
+        response->setStatusCode(drogon::k400BadRequest);
+        applyCors(request, response);
+        callback(response);
+        return;
+    }
+
+    const auto result =
+        service_.getMemberProfile(extractSessionToken(request), *memberId);
+
+    Json::Value body;
+    body["ok"] = result.ok;
+    body["message"] = result.message;
+    if (result.profile.has_value())
+    {
+        body["profile"] = buildProfileJson(*result.profile);
+    }
+
+    auto response = drogon::HttpResponse::newHttpJsonResponse(body);
+    response->setStatusCode(static_cast<drogon::HttpStatusCode>(result.statusCode));
+    applyCors(request, response);
+    callback(response);
+}
+
 void MemberController::handleUpdateProfile(const drogon::HttpRequestPtr &request,
                                            Callback &&callback)
 {
@@ -350,6 +493,69 @@ void MemberController::handleAwardExperience(const drogon::HttpRequestPtr &reque
     if (result.member.has_value())
     {
         body["member"] = buildMemberJson(*result.member);
+    }
+
+    auto response = drogon::HttpResponse::newHttpJsonResponse(body);
+    response->setStatusCode(static_cast<drogon::HttpStatusCode>(result.statusCode));
+    applyCors(request, response);
+    callback(response);
+}
+
+void MemberController::handleSaveFoodMbti(const drogon::HttpRequestPtr &request,
+                                          Callback &&callback)
+{
+    const auto json = request->getJsonObject();
+    if (!json)
+    {
+        auto response =
+            drogon::HttpResponse::newHttpJsonResponse(makeErrorBody("Invalid JSON body."));
+        response->setStatusCode(drogon::k400BadRequest);
+        applyCors(request, response);
+        callback(response);
+        return;
+    }
+
+    SaveFoodMbtiRequestDTO dto;
+    dto.type = json->get("type", "").asString();
+    dto.title = json->get("title", "").asString();
+    dto.description = json->get("description", "").asString();
+
+    if (json->isMember("traits") && (*json)["traits"].isArray())
+    {
+        for (const auto &item : (*json)["traits"])
+        {
+            if (item.isString())
+            {
+                dto.traits.push_back(item.asString());
+            }
+        }
+    }
+
+    if (json->isMember("recommendedFoods") &&
+        (*json)["recommendedFoods"].isArray())
+    {
+        for (const auto &item : (*json)["recommendedFoods"])
+        {
+            if (item.isString())
+            {
+                dto.recommendedFoods.push_back(item.asString());
+            }
+        }
+    }
+
+    if (json->isMember("completedAt") && (*json)["completedAt"].isString())
+    {
+        dto.completedAt = (*json)["completedAt"].asString();
+    }
+
+    const auto result = service_.saveMyFoodMbti(extractSessionToken(request), dto);
+
+    Json::Value body;
+    body["ok"] = result.ok;
+    body["message"] = result.message;
+    if (result.foodMbti.has_value())
+    {
+        body["foodMbti"] = buildFoodMbtiJson(*result.foodMbti);
     }
 
     auto response = drogon::HttpResponse::newHttpJsonResponse(body);

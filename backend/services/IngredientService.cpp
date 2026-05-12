@@ -1,151 +1,19 @@
 #include "IngredientService.h"
 
-#include <drogon/drogon.h>
-#include <drogon/utils/Utilities.h>
-
 #include <algorithm>
-#include <atomic>
 #include <cctype>
-#include <cstdlib>
-#include <filesystem>
-#include <fstream>
+#include <exception>
 #include <regex>
-#include <stdexcept>
-#include <thread>
-#include <unordered_set>
-#include <utility>
-#include <vector>
 
 namespace
 {
 
-// JSON 값을 비어 있지 않은 선택 문자열로 변환한다.
-std::optional<std::string> optionalJsonString(const Json::Value &value)
-{
-    // 공공 API 응답은 필드별 타입이 항상 일정하지 않다.
-    // 이 함수는 문자열처럼 다룰 수 있는 값만 골라 이후 매핑 로직을 단순하게 만든다.
-    if (value.isNull())
-    {
-        return std::nullopt;
-    }
-
-    if (value.isString())
-    {
-        const auto str = value.asString();
-        if (str.empty())
-        {
-            return std::nullopt;
-        }
-        return str;
-    }
-
-    // 외부 API의 일부 필드는 숫자여도 문자열 id를 의미할 수 있다.
-    if (value.isNumeric())
-    {
-        return value.asString();
-    }
-
-    return std::nullopt;
-}
-
-// 후보 키 중 첫 번째 비어 있지 않은 문자열 값을 반환한다.
-std::optional<std::string> firstStringFromKeys(
-    const Json::Value &row,
-    std::initializer_list<const char *> keys)
-{
-    // 공공 API는 같은 의미의 필드도 camelCase, 대문자 스네이크 케이스 등으로 내려줄 수 있다.
-    // 호출부는 가능한 후보 키를 넘기고, 여기서는 처음 발견된 유효 문자열을 선택한다.
-    for (const auto *key : keys)
-    {
-        if (!row.isMember(key))
-        {
-            continue;
-        }
-
-        const auto value = optionalJsonString(row[key]);
-        if (value.has_value() && !value->empty())
-        {
-            return value;
-        }
-    }
-
-    return std::nullopt;
-}
-
-// JSON 값을 선택 실수값으로 변환한다.
-std::optional<double> optionalJsonDouble(const Json::Value &value)
-{
-    // 영양 성분 값은 숫자 또는 문자열로 내려올 수 있으므로 두 형식을 모두 처리한다.
-    // 파싱할 수 없는 값은 항목 전체 실패가 아니라 해당 영양값 누락으로 취급한다.
-    if (value.isNull())
-    {
-        return std::nullopt;
-    }
-
-    try
-    {
-        if (value.isNumeric())
-        {
-            return value.asDouble();
-        }
-
-        if (value.isString())
-        {
-            auto text = value.asString();
-
-            // 숫자 파싱 전에 공백과 쉼표 구분자를 제거한다.
-            text.erase(
-                std::remove_if(text.begin(), text.end(), [](unsigned char ch) {
-                    return std::isspace(ch) != 0 || ch == ',';
-                }),
-                text.end());
-
-            if (text.empty())
-            {
-                return std::nullopt;
-            }
-
-            return std::stod(text);
-        }
-    }
-    catch (const std::exception &)
-    {
-        // 파싱 실패가 전체 응답 매핑을 중단하지 않도록 무시한다.
-        return std::nullopt;
-    }
-
-    return std::nullopt;
-}
-
-// 후보 키 중 첫 번째로 파싱 가능한 숫자 값을 반환한다.
-std::optional<double> firstDoubleFromKeys(const Json::Value &row,
-                                          std::initializer_list<const char *> keys)
-{
-    // 문자열 필드와 마찬가지로 숫자 필드도 여러 후보 키를 순서대로 확인한다.
-    for (const auto *key : keys)
-    {
-        if (!row.isMember(key))
-        {
-            continue;
-        }
-
-        const auto value = optionalJsonDouble(row[key]);
-        if (value.has_value())
-        {
-            return value;
-        }
-    }
-
-    return std::nullopt;
-}
-
-// API 날짜 문자열을 정규화한다.
-// YYYYMMDD 형식을 지원하며 YYYY-MM-DD 형식으로 맞춘다.
+// JSON 媛믪쓣 鍮꾩뼱 ?덉? ?딆? ?좏깮 臾몄옄?대줈 蹂?섑븳??
 std::optional<std::string> normalizeDataBaseDate(
     const std::optional<std::string> &value)
 {
-    // 공공 API 기준일자는 "20240512"처럼 붙어서 오기도 하고 이미 구분자가 있기도 하다.
-    // 빈 값은 저장하지 않고, 8자리 숫자만 서비스 표준 날짜 형식으로 변환한다.
+    // 怨듦났 API 湲곗??쇱옄??"20240512"泥섎읆 遺숈뼱???ㅺ린???섍퀬 ?대? 援щ텇?먭? ?덇린???섎떎.
+    // 鍮?媛믪? ??ν븯吏 ?딄퀬, 8?먮━ ?レ옄留??쒕퉬???쒖? ?좎쭨 ?뺤떇?쇰줈 蹂?섑븳??
     if (!value.has_value())
     {
         return std::nullopt;
@@ -172,325 +40,6 @@ std::optional<std::string> normalizeDataBaseDate(
 
     return text;
 }
-
-// 알려진 여러 API 응답 구조에서 행 배열을 추출한다.
-std::vector<Json::Value> extractRows(const Json::Value &root)
-{
-    std::vector<Json::Value> out;
-
-    // API 제공 방식이나 버전에 따라 목록이 data 바로 아래에 있을 수 있다.
-    // 응답 구조 1: { "data": [...] }
-    if (root.isMember("data") && root["data"].isArray())
-    {
-        for (const auto &item : root["data"])
-        {
-            out.push_back(item);
-        }
-        return out;
-    }
-
-    // 공공데이터포털 표준 응답처럼 response/body/items 안에 들어오는 경우도 처리한다.
-    // 응답 구조 2: { "response": { "body": { "items": ... } } }
-    if (root.isMember("response") && root["response"].isObject())
-    {
-        const auto &response = root["response"];
-        if (response.isMember("body") && response["body"].isObject())
-        {
-            const auto &body = response["body"];
-            if (body.isMember("items"))
-            {
-                const auto &items = body["items"];
-                if (items.isArray())
-                {
-                    // items 자체가 배열이면 각 원소가 하나의 검색 결과다.
-                    for (const auto &item : items)
-                    {
-                        out.push_back(item);
-                    }
-                    return out;
-                }
-
-                if (items.isObject() && items.isMember("item"))
-                {
-                    const auto &itemField = items["item"];
-                    if (itemField.isArray())
-                    {
-                        // items.item이 배열인 일반적인 복수 결과 형태다.
-                        for (const auto &item : itemField)
-                        {
-                            out.push_back(item);
-                        }
-                        return out;
-                    }
-
-                    if (itemField.isObject())
-                    {
-                        // 결과가 1건이면 배열 대신 단일 객체로 내려오는 경우가 있다.
-                        out.push_back(itemField);
-                        return out;
-                    }
-                }
-            }
-        }
-    }
-
-    return out;
-}
-
-bool looksLikePercentEncoded(const std::string &value)
-{
-    // Avoid double-encoding already encoded query fragments such as %EC%8B...
-    for (std::size_t i = 0; i + 2 < value.size(); ++i)
-    {
-        if (value[i] != '%')
-        {
-            continue;
-        }
-
-        const auto h1 = static_cast<unsigned char>(value[i + 1]);
-        const auto h2 = static_cast<unsigned char>(value[i + 2]);
-        if (std::isxdigit(h1) != 0 && std::isxdigit(h2) != 0)
-        {
-            return true;
-        }
-    }
-    return false;
-}
-
-}  // 익명 네임스페이스
-
-namespace
-{
-
-std::string toLowerAscii(std::string value)
-{
-    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
-        return static_cast<char>(std::tolower(ch));
-    });
-    return value;
-}
-
-std::string trimCopy(std::string value)
-{
-    const auto notSpace = [](unsigned char ch) { return !std::isspace(ch); };
-    value.erase(value.begin(),
-                std::find_if(value.begin(), value.end(), notSpace));
-    value.erase(
-        std::find_if(value.rbegin(), value.rend(), notSpace).base(), value.end());
-    return value;
-}
-
-std::optional<std::string> normalizeImportYnForApi(
-    const std::optional<std::string> &value)
-{
-    if (!value.has_value())
-    {
-        return std::nullopt;
-    }
-
-    const auto normalized = toLowerAscii(trimCopy(*value));
-    if (normalized == "y")
-    {
-        return "Y";
-    }
-    if (normalized == "n")
-    {
-        return "N";
-    }
-    return std::nullopt;
-}
-
-std::optional<std::uint64_t> optionalJsonUInt64(const Json::Value &value)
-{
-    if (value.isNull())
-    {
-        return std::nullopt;
-    }
-
-    try
-    {
-        if (value.isUInt64())
-        {
-            return value.asUInt64();
-        }
-        if (value.isUInt())
-        {
-            return static_cast<std::uint64_t>(value.asUInt());
-        }
-        if (value.isNumeric())
-        {
-            const auto raw = value.asDouble();
-            if (raw < 0.0)
-            {
-                return std::nullopt;
-            }
-            return static_cast<std::uint64_t>(raw);
-        }
-        if (value.isString())
-        {
-            auto text = value.asString();
-            text.erase(
-                std::remove_if(text.begin(), text.end(), [](unsigned char ch) {
-                    return std::isspace(ch) != 0 || ch == ',';
-                }),
-                text.end());
-            if (text.empty())
-            {
-                return std::nullopt;
-            }
-            return static_cast<std::uint64_t>(std::stoull(text));
-        }
-    }
-    catch (const std::exception &)
-    {
-        return std::nullopt;
-    }
-
-    return std::nullopt;
-}
-
-std::optional<std::string> extractPublicApiErrorMessage(const Json::Value &body)
-{
-    if (!body.isMember("response") || !body["response"].isObject())
-    {
-        return std::nullopt;
-    }
-
-    const auto &responseRoot = body["response"];
-    if (!responseRoot.isMember("header") || !responseRoot["header"].isObject())
-    {
-        return std::nullopt;
-    }
-
-    const auto &header = responseRoot["header"];
-    const auto resultCode =
-        firstStringFromKeys(header, {"resultCode", "RESULT_CODE"});
-    const auto resultMsg = firstStringFromKeys(header, {"resultMsg", "RESULT_MSG"});
-    if (!resultCode.has_value() || *resultCode == "00")
-    {
-        return std::nullopt;
-    }
-
-    return "Nutrition public API error (" + *resultCode +
-           "): " + resultMsg.value_or("Unknown error.");
-}
-
-std::optional<std::uint64_t> extractTotalCount(const Json::Value &body)
-{
-    if (!body.isMember("response") || !body["response"].isObject())
-    {
-        return std::nullopt;
-    }
-
-    const auto &responseRoot = body["response"];
-    if (!responseRoot.isMember("body") || !responseRoot["body"].isObject())
-    {
-        return std::nullopt;
-    }
-
-    const auto &bodyNode = responseRoot["body"];
-    if (!bodyNode.isMember("totalCount"))
-    {
-        return std::nullopt;
-    }
-
-    return optionalJsonUInt64(bodyNode["totalCount"]);
-}
-
-std::string buildPublicNutritionApiPath(
-    const std::string &serviceKey,
-    std::uint64_t pageNo,
-    std::uint64_t numOfRows,
-    const std::optional<std::string> &foodKeyword)
-{
-    std::string path =
-        "/openapi/tn_pubr_public_nutri_process_info_api"
-        "?serviceKey=" +
-        drogon::utils::urlEncodeComponent(serviceKey) + "&type=json&pageNo=" +
-        std::to_string(pageNo) + "&numOfRows=" + std::to_string(numOfRows);
-
-    if (foodKeyword.has_value())
-    {
-        const auto encodedKeyword = looksLikePercentEncoded(*foodKeyword)
-                                        ? *foodKeyword
-                                        : drogon::utils::urlEncodeComponent(*foodKeyword);
-        path += "&foodNm=" + encodedKeyword;
-    }
-
-    return path;
-}
-
-drogon::HttpClientPtr makePublicNutritionApiClient()
-{
-    // Some Windows environments fail hostname resolution in Drogon's async resolver
-    // and return ReqResult::BadServerAddress. Connect by IP and pin Host header.
-    // validateCert=false is required because TLS cert CN is the domain, not raw IP.
-    return drogon::HttpClient::newHttpClient("https://27.101.215.193",
-                                             nullptr,
-                                             false,
-                                             false);
-}
-
-std::vector<ingredient::ProcessedFoodSearchItemDTO> mapRowsToFoods(
-    const std::vector<Json::Value> &rows,
-    bool dedupeByFoodName)
-{
-    std::vector<ingredient::ProcessedFoodSearchItemDTO> foods;
-    foods.reserve(rows.size());
-
-    std::unordered_set<std::string> seenFoodNames;
-    if (dedupeByFoodName)
-    {
-        seenFoodNames.reserve(rows.size());
-    }
-
-    for (const auto &row : rows)
-    {
-        auto foodCode = firstStringFromKeys(row, {"foodCd", "FOOD_CD"});
-        auto foodName = firstStringFromKeys(row, {"foodNm", "FOOD_NM"});
-        if (!foodCode.has_value() || !foodName.has_value())
-        {
-            continue;
-        }
-
-        if (dedupeByFoodName && !seenFoodNames.insert(*foodName).second)
-        {
-            continue;
-        }
-
-        ingredient::ProcessedFoodSearchItemDTO dto;
-        dto.foodCode = *foodCode;
-        dto.foodName = *foodName;
-        dto.foodGroupName = firstStringFromKeys(
-            row,
-            {"foodLv6Nm", "foodLv5Nm", "foodLv4Nm", "foodLv3Nm",
-             "foodLv7Nm", "FOOD_LV6_NM", "FOOD_LV5_NM", "FOOD_LV4_NM",
-             "FOOD_LV3_NM", "FOOD_LV7_NM"});
-        dto.nutritionBasisAmount =
-            firstStringFromKeys(row, {"nutConSrtrQua", "NUT_CON_SRTR_QUA"});
-        dto.energyKcal = firstDoubleFromKeys(row, {"enerc", "ENERC"});
-        dto.proteinG = firstDoubleFromKeys(row, {"prot", "PROT"});
-        dto.fatG = firstDoubleFromKeys(row, {"fatce", "FATCE"});
-        dto.carbohydrateG = firstDoubleFromKeys(row, {"chocdf", "CHOCDF"});
-        dto.sugarG = firstDoubleFromKeys(row, {"sugar", "SUGAR"});
-        dto.sodiumMg = firstDoubleFromKeys(row, {"nat", "NAT"});
-        dto.sourceName = firstStringFromKeys(row, {"srcNm", "SRC_NM"});
-        dto.manufacturerName = firstStringFromKeys(row, {"mfrNm", "MFR_NM"});
-        dto.importYn =
-            normalizeImportYnForApi(firstStringFromKeys(row, {"imptYn", "IMPT_YN"}));
-        dto.originCountryName = firstStringFromKeys(row, {"cooNm", "COO_NM"});
-        dto.dataBaseDate =
-            normalizeDataBaseDate(firstStringFromKeys(row, {"crtrYmd", "CRTR_YMD"}));
-        foods.push_back(std::move(dto));
-    }
-
-    return foods;
-}
-
-std::atomic_bool gPublicNutritionSyncStarted{false};
-std::atomic_bool gPublicNutritionSyncRunning{false};
-std::atomic_bool gPublicNutritionSyncFailed{false};
-
 }  // namespace
 
 namespace ingredient
@@ -500,7 +49,7 @@ IngredientListResultDTO IngredientService::getIngredients(std::uint64_t memberId
 {
     IngredientListResultDTO result;
 
-    // 세션이 없는 요청은 인증되지 않은 요청으로 처리한다.
+    // ?몄뀡???녿뒗 ?붿껌? ?몄쬆?섏? ?딆? ?붿껌?쇰줈 泥섎━?쒕떎.
     if (memberId == 0)
     {
         result.statusCode = 401;
@@ -510,11 +59,11 @@ IngredientListResultDTO IngredientService::getIngredients(std::uint64_t memberId
 
     try
     {
-        // 회원별 식재료 조회는 매퍼가 담당한다.
-        // 서비스는 조회 결과를 클라이언트 응답 계약에 맞게 후처리한다.
+        // ?뚯썝蹂??앹옱猷?議고쉶??留ㅽ띁媛 ?대떦?쒕떎.
+        // ?쒕퉬?ㅻ뒗 議고쉶 寃곌낵瑜??대씪?댁뼵???묐떟 怨꾩빟??留욊쾶 ?꾩쿂由ы븳??
         result.ingredients = mapper_.findIngredientsByMemberId(memberId);
 
-        // 응답 직렬화 전에 열거형과 날짜 값을 클라이언트 형식으로 정규화한다.
+        // ?묐떟 吏곷젹???꾩뿉 ?닿굅?뺢낵 ?좎쭨 媛믪쓣 ?대씪?댁뼵???뺤떇?쇰줈 ?뺢퇋?뷀븳??
         for (auto &ingredient : result.ingredients)
         {
             normalizeIngredientForClient(ingredient);
@@ -539,7 +88,7 @@ IngredientSingleResultDTO IngredientService::createIngredient(
 {
     IngredientSingleResultDTO result;
 
-    // 세션이 없는 요청은 인증되지 않은 요청으로 처리한다.
+    // ?몄뀡???녿뒗 ?붿껌? ?몄쬆?섏? ?딆? ?붿껌?쇰줈 泥섎━?쒕떎.
     if (memberId == 0)
     {
         result.statusCode = 401;
@@ -547,8 +96,8 @@ IngredientSingleResultDTO IngredientService::createIngredient(
         return result;
     }
 
-    // 사용자가 직접 입력하는 핵심 필드는 먼저 공백을 제거한다.
-    // storage는 대소문자를 허용하기 위해 소문자 기준으로 검증한다.
+    // ?ъ슜?먭? 吏곸젒 ?낅젰?섎뒗 ?듭떖 ?꾨뱶??癒쇱? 怨듬갚???쒓굅?쒕떎.
+    // storage????뚮Ц?먮? ?덉슜?섍린 ?꾪빐 ?뚮Ц??湲곗??쇰줈 寃利앺븳??
     const auto name = trim(request.name);
     const auto category = trim(request.category);
     const auto quantity = trim(request.quantity);
@@ -556,8 +105,8 @@ IngredientSingleResultDTO IngredientService::createIngredient(
     const auto storage = toLower(trim(request.storage));
     const auto expiryDate = trim(request.expiryDate);
 
-    // 이름, 카테고리, 수량, 단위, 보관 위치, 유통기한은 생성 시 반드시 필요하다.
-    // 공백만 입력한 값은 trim 이후 빈 값으로 처리된다.
+    // ?대쫫, 移댄뀒怨좊━, ?섎웾, ?⑥쐞, 蹂닿? ?꾩튂, ?좏넻湲고븳? ?앹꽦 ??諛섎뱶???꾩슂?섎떎.
+    // 怨듬갚留??낅젰??媛믪? trim ?댄썑 鍮?媛믪쑝濡?泥섎━?쒕떎.
     if (name.empty() || category.empty() || quantity.empty() || unit.empty() ||
         storage.empty() || expiryDate.empty())
     {
@@ -566,7 +115,7 @@ IngredientSingleResultDTO IngredientService::createIngredient(
         return result;
     }
 
-    // DB 컬럼 크기와 UI 입력 제한을 맞추기 위해 문자열 길이를 서비스에서 방어한다.
+    // DB 而щ읆 ?ш린? UI ?낅젰 ?쒗븳??留욎텛湲??꾪빐 臾몄옄??湲몄씠瑜??쒕퉬?ㅼ뿉??諛⑹뼱?쒕떎.
     if (name.size() > 150U || category.size() > 50U || quantity.size() > 50U ||
         unit.size() > 20U)
     {
@@ -575,7 +124,7 @@ IngredientSingleResultDTO IngredientService::createIngredient(
         return result;
     }
 
-    // 보관 위치 값은 허용된 클라이언트 열거형이어야 한다.
+    // 蹂닿? ?꾩튂 媛믪? ?덉슜???대씪?댁뼵???닿굅?뺤씠?댁빞 ?쒕떎.
     if (!isAllowedClientStorage(storage))
     {
         result.statusCode = 400;
@@ -583,7 +132,7 @@ IngredientSingleResultDTO IngredientService::createIngredient(
         return result;
     }
 
-    // 날짜는 YYYY-MM-DD 형식이어야 한다.
+    // ?좎쭨??YYYY-MM-DD ?뺤떇?댁뼱???쒕떎.
     if (!isValidDate(expiryDate))
     {
         result.statusCode = 400;
@@ -591,8 +140,8 @@ IngredientSingleResultDTO IngredientService::createIngredient(
         return result;
     }
 
-    // 원본 request를 복사한 뒤, 검증된 핵심 필드만 정규화된 값으로 덮어쓴다.
-    // 이렇게 하면 공공 API 메타데이터 같은 선택 필드는 유지하면서도 핵심 필드는 신뢰할 수 있다.
+    // ?먮낯 request瑜?蹂듭궗???? 寃利앸맂 ?듭떖 ?꾨뱶留??뺢퇋?붾맂 媛믪쑝濡???뼱?대떎.
+    // ?대젃寃??섎㈃ 怨듦났 API 硫뷀??곗씠??媛숈? ?좏깮 ?꾨뱶???좎??섎㈃?쒕룄 ?듭떖 ?꾨뱶???좊ː?????덈떎.
     CreateIngredientRequestDTO normalized = request;
     normalized.name = name;
     normalized.category = category;
@@ -601,8 +150,8 @@ IngredientSingleResultDTO IngredientService::createIngredient(
     normalized.storage = toDbStorage(storage);
     normalized.expiryDate = expiryDate;
 
-    // 공공 API에서 가져온 선택 메타데이터는 사용자가 직접 입력하지 않을 수도 있다.
-    // 공백 문자열을 저장하지 않도록 각 필드를 trim 후 비어 있으면 nullopt로 바꾼다.
+    // 怨듦났 API?먯꽌 媛?몄삩 ?좏깮 硫뷀??곗씠?곕뒗 ?ъ슜?먭? 吏곸젒 ?낅젰?섏? ?딆쓣 ?섎룄 ?덈떎.
+    // 怨듬갚 臾몄옄?댁쓣 ??ν븯吏 ?딅룄濡?媛??꾨뱶瑜?trim ??鍮꾩뼱 ?덉쑝硫?nullopt濡?諛붽씔??
     if (normalized.publicFoodCode.has_value())
     {
         normalized.publicFoodCode = trim(*normalized.publicFoodCode);
@@ -644,14 +193,14 @@ IngredientSingleResultDTO IngredientService::createIngredient(
         }
     }
 
-    // 제한된 값 집합을 갖는 선택 필드를 정규화한다.
-    // importYn은 Y/N만 허용하고, 기준일자는 YYYYMMDD 형식을 서비스 날짜 형식으로 맞춘다.
+    // ?쒗븳??媛?吏묓빀??媛뽯뒗 ?좏깮 ?꾨뱶瑜??뺢퇋?뷀븳??
+    // importYn? Y/N留??덉슜?섍퀬, 湲곗??쇱옄??YYYYMMDD ?뺤떇???쒕퉬???좎쭨 ?뺤떇?쇰줈 留욎텣??
     normalized.importYn = normalizeImportYn(normalized.importYn);
     normalized.dataBaseDate = normalizeDataBaseDate(normalized.dataBaseDate);
 
     try
     {
-        // 매퍼는 이미 정규화된 값을 받아 DB insert만 수행한다.
+        // 留ㅽ띁???대? ?뺢퇋?붾맂 媛믪쓣 諛쏆븘 DB insert留??섑뻾?쒕떎.
         auto created = mapper_.insertIngredient(memberId, normalized);
         if (!created.has_value())
         {
@@ -660,7 +209,7 @@ IngredientSingleResultDTO IngredientService::createIngredient(
             return result;
         }
 
-        // 생성 직후 응답도 목록 조회와 같은 클라이언트 형식으로 맞춘다.
+        // ?앹꽦 吏곹썑 ?묐떟??紐⑸줉 議고쉶? 媛숈? ?대씪?댁뼵???뺤떇?쇰줈 留욎텣??
         normalizeIngredientForClient(*created);
 
         result.ok = true;
@@ -684,7 +233,7 @@ IngredientSingleResultDTO IngredientService::updateIngredient(
 {
     IngredientSingleResultDTO result;
 
-    // 세션이 없는 요청은 인증되지 않은 요청으로 처리한다.
+    // ?몄뀡???녿뒗 ?붿껌? ?몄쬆?섏? ?딆? ?붿껌?쇰줈 泥섎━?쒕떎.
     if (memberId == 0)
     {
         result.statusCode = 401;
@@ -692,7 +241,7 @@ IngredientSingleResultDTO IngredientService::updateIngredient(
         return result;
     }
 
-    // 대상 id는 필수다.
+    // ???id???꾩닔??
     if (ingredientId == 0)
     {
         result.statusCode = 400;
@@ -700,8 +249,8 @@ IngredientSingleResultDTO IngredientService::updateIngredient(
         return result;
     }
 
-    // 수정 API는 생성 API와 같은 핵심 필드 세트를 받는다.
-    // 공백 제거와 storage 소문자 변환을 먼저 적용해 검증 기준을 통일한다.
+    // ?섏젙 API???앹꽦 API? 媛숈? ?듭떖 ?꾨뱶 ?명듃瑜?諛쏅뒗??
+    // 怨듬갚 ?쒓굅? storage ?뚮Ц??蹂?섏쓣 癒쇱? ?곸슜??寃利?湲곗????듭씪?쒕떎.
     const auto name = trim(request.name);
     const auto category = trim(request.category);
     const auto quantity = trim(request.quantity);
@@ -709,8 +258,8 @@ IngredientSingleResultDTO IngredientService::updateIngredient(
     const auto storage = toLower(trim(request.storage));
     const auto expiryDate = trim(request.expiryDate);
 
-    // 현재 수정은 부분 업데이트가 아니라 전체 수정 방식이다.
-    // 따라서 생성 때와 같은 필수 필드를 모두 요구한다.
+    // ?꾩옱 ?섏젙? 遺遺??낅뜲?댄듃媛 ?꾨땲???꾩껜 ?섏젙 諛⑹떇?대떎.
+    // ?곕씪???앹꽦 ?뚯? 媛숈? ?꾩닔 ?꾨뱶瑜?紐⑤몢 ?붽뎄?쒕떎.
     if (name.empty() || category.empty() || quantity.empty() || unit.empty() ||
         storage.empty() || expiryDate.empty())
     {
@@ -719,7 +268,7 @@ IngredientSingleResultDTO IngredientService::updateIngredient(
         return result;
     }
 
-    // 문자열 필드 길이 제한을 확인한다.
+    // 臾몄옄???꾨뱶 湲몄씠 ?쒗븳???뺤씤?쒕떎.
     if (name.size() > 150U || category.size() > 50U || quantity.size() > 50U ||
         unit.size() > 20U)
     {
@@ -728,7 +277,7 @@ IngredientSingleResultDTO IngredientService::updateIngredient(
         return result;
     }
 
-    // 보관 위치 값은 허용된 클라이언트 열거형이어야 한다.
+    // 蹂닿? ?꾩튂 媛믪? ?덉슜???대씪?댁뼵???닿굅?뺤씠?댁빞 ?쒕떎.
     if (!isAllowedClientStorage(storage))
     {
         result.statusCode = 400;
@@ -736,7 +285,7 @@ IngredientSingleResultDTO IngredientService::updateIngredient(
         return result;
     }
 
-    // 날짜는 YYYY-MM-DD 형식이어야 한다.
+    // ?좎쭨??YYYY-MM-DD ?뺤떇?댁뼱???쒕떎.
     if (!isValidDate(expiryDate))
     {
         result.statusCode = 400;
@@ -746,8 +295,8 @@ IngredientSingleResultDTO IngredientService::updateIngredient(
 
     try
     {
-        // 대상 식재료는 현재 회원의 소유여야 한다.
-        // 이 확인으로 다른 회원의 식재료 id를 직접 호출하는 요청을 차단한다.
+        // ????앹옱猷뚮뒗 ?꾩옱 ?뚯썝???뚯쑀?ъ빞 ?쒕떎.
+        // ???뺤씤?쇰줈 ?ㅻⅨ ?뚯썝???앹옱猷?id瑜?吏곸젒 ?몄텧?섎뒗 ?붿껌??李⑤떒?쒕떎.
         const auto existing = mapper_.findByIdForMember(ingredientId, memberId);
         if (!existing.has_value())
         {
@@ -756,8 +305,8 @@ IngredientSingleResultDTO IngredientService::updateIngredient(
             return result;
         }
 
-        // 수정 가능한 필드만 별도 DTO에 담는다.
-        // 공공 API에서 유래한 코드/영양 원본 정보는 여기서 덮어쓰지 않는다.
+        // ?섏젙 媛?ν븳 ?꾨뱶留?蹂꾨룄 DTO???대뒗??
+        // 怨듦났 API?먯꽌 ?좊옒??肄붾뱶/?곸뼇 ?먮낯 ?뺣낫???ш린????뼱?곗? ?딅뒗??
         UpdateIngredientRequestDTO normalized;
         normalized.name = name;
         normalized.category = category;
@@ -773,8 +322,8 @@ IngredientSingleResultDTO IngredientService::updateIngredient(
             return result;
         }
 
-        // update 결과만으로는 DB 트리거나 기본값 반영 여부를 알기 어렵다.
-        // 응답에 실제 저장된 최신 값을 담기 위해 다시 조회한다.
+        // update 寃곌낵留뚯쑝濡쒕뒗 DB ?몃━嫄곕굹 湲곕낯媛?諛섏쁺 ?щ?瑜??뚭린 ?대졄??
+        // ?묐떟???ㅼ젣 ??λ맂 理쒖떊 媛믪쓣 ?닿린 ?꾪빐 ?ㅼ떆 議고쉶?쒕떎.
         auto updated = mapper_.findByIdForMember(ingredientId, memberId);
         if (!updated.has_value())
         {
@@ -805,7 +354,7 @@ IngredientDeleteResultDTO IngredientService::deleteIngredient(
 {
     IngredientDeleteResultDTO result;
 
-    // 세션이 없는 요청은 인증되지 않은 요청으로 처리한다.
+    // ?몄뀡???녿뒗 ?붿껌? ?몄쬆?섏? ?딆? ?붿껌?쇰줈 泥섎━?쒕떎.
     if (memberId == 0)
     {
         result.statusCode = 401;
@@ -813,7 +362,7 @@ IngredientDeleteResultDTO IngredientService::deleteIngredient(
         return result;
     }
 
-    // 대상 id는 필수다.
+    // ???id???꾩닔??
     if (ingredientId == 0)
     {
         result.statusCode = 400;
@@ -823,8 +372,8 @@ IngredientDeleteResultDTO IngredientService::deleteIngredient(
 
     try
     {
-        // 대상 식재료는 현재 회원의 소유여야 한다.
-        // 삭제 역시 소유권을 먼저 확인해 id 추측 공격을 막는다.
+        // ????앹옱猷뚮뒗 ?꾩옱 ?뚯썝???뚯쑀?ъ빞 ?쒕떎.
+        // ??젣 ??떆 ?뚯쑀沅뚯쓣 癒쇱? ?뺤씤??id 異붿륫 怨듦꺽??留됰뒗??
         const auto existing = mapper_.findByIdForMember(ingredientId, memberId);
         if (!existing.has_value())
         {
@@ -833,8 +382,8 @@ IngredientDeleteResultDTO IngredientService::deleteIngredient(
             return result;
         }
 
-        // 실제 row를 지우지 않고 삭제 상태만 표시한다.
-        // 추후 복구, 감사 로그, 통계 계산에 원본 데이터를 남길 수 있다.
+        // ?ㅼ젣 row瑜?吏?곗? ?딄퀬 ??젣 ?곹깭留??쒖떆?쒕떎.
+        // 異뷀썑 蹂듦뎄, 媛먯궗 濡쒓렇, ?듦퀎 怨꾩궛???먮낯 ?곗씠?곕? ?④만 ???덈떎.
         if (!mapper_.markDeleted(ingredientId, memberId))
         {
             result.statusCode = 500;
@@ -855,399 +404,10 @@ IngredientDeleteResultDTO IngredientService::deleteIngredient(
     }
 }
 
-void IngredientService::searchProcessedFoods(const std::string &keyword,
-                                             ProcessedFoodSearchCallback &&callback)
-{
-    ProcessedFoodSearchResultDTO invalidInput;
-    const auto normalizedKeyword = trim(keyword);
-    if (normalizedKeyword.empty())
-    {
-        invalidInput.statusCode = 400;
-        invalidInput.message = "Keyword is required.";
-        callback(std::move(invalidInput));
-        return;
-    }
-
-    try
-    {
-        const auto cacheCount = publicNutritionFoodMapper_.countFoods();
-        if (cacheCount == 0U)
-        {
-            startPublicNutritionSyncIfNeeded();
-
-            if (gPublicNutritionSyncRunning.load())
-            {
-                ProcessedFoodSearchResultDTO building;
-                building.statusCode = 503;
-                building.message = "Nutrition index is building. Try again shortly.";
-                callback(std::move(building));
-                return;
-            }
-
-            if (gPublicNutritionSyncFailed.load())
-            {
-                searchProcessedFoodsFromPublicApi(normalizedKeyword,
-                                                  std::move(callback));
-                return;
-            }
-        }
-
-        auto foods = publicNutritionFoodMapper_.searchByKeyword(normalizedKeyword);
-        if (!foods.empty())
-        {
-            ProcessedFoodSearchResultDTO okResult;
-            okResult.ok = true;
-            okResult.statusCode = 200;
-            okResult.message = "Nutrition foods loaded.";
-            okResult.foods = std::move(foods);
-            callback(std::move(okResult));
-            return;
-        }
-
-        const auto postSearchCacheCount = publicNutritionFoodMapper_.countFoods();
-        if (postSearchCacheCount == 0U)
-        {
-            if (gPublicNutritionSyncRunning.load())
-            {
-                ProcessedFoodSearchResultDTO building;
-                building.statusCode = 503;
-                building.message = "Nutrition index is building. Try again shortly.";
-                callback(std::move(building));
-                return;
-            }
-
-            searchProcessedFoodsFromPublicApi(normalizedKeyword, std::move(callback));
-            return;
-        }
-
-        ProcessedFoodSearchResultDTO emptyResult;
-        emptyResult.ok = true;
-        emptyResult.statusCode = 200;
-        emptyResult.message = "Nutrition foods loaded.";
-        callback(std::move(emptyResult));
-    }
-    catch (const std::exception &)
-    {
-        searchProcessedFoodsFromPublicApi(normalizedKeyword, std::move(callback));
-    }
-}
-
-void IngredientService::startPublicNutritionSyncIfNeeded()
-{
-    if (gPublicNutritionSyncRunning.load())
-    {
-        return;
-    }
-
-    bool expected = false;
-    if (!gPublicNutritionSyncStarted.compare_exchange_strong(expected, true))
-    {
-        return;
-    }
-
-    gPublicNutritionSyncRunning.store(true);
-    gPublicNutritionSyncFailed.store(false);
-
-    auto serviceKey = getEnvValue("PUBLIC_NUTRI_SERVICE_KEY");
-    if (!serviceKey.has_value())
-    {
-        serviceKey = getServiceKeyFromLocalFile();
-    }
-
-    if (!serviceKey.has_value())
-    {
-        gPublicNutritionSyncFailed.store(true);
-        gPublicNutritionSyncRunning.store(false);
-        gPublicNutritionSyncStarted.store(false);
-        return;
-    }
-
-    std::thread([serviceKey = *serviceKey]() {
-        try
-        {
-            PublicNutritionFoodMapper mapper;
-            auto client = makePublicNutritionApiClient();
-
-            constexpr std::uint64_t kNumOfRows = 1000;
-            std::uint64_t pageNo = 1;
-            std::uint64_t totalPages = 1;
-            bool totalCountResolved = false;
-
-            while (pageNo <= totalPages)
-            {
-                auto request = drogon::HttpRequest::newHttpRequest();
-                request->setMethod(drogon::Get);
-                request->setPathEncode(false);
-                request->setPath(buildPublicNutritionApiPath(
-                    serviceKey,
-                    pageNo,
-                    kNumOfRows,
-                    std::nullopt));
-                request->addHeader("Host", "api.data.go.kr");
-
-                auto [reqResult, response] = client->sendRequest(request, 20.0);
-                if (reqResult != drogon::ReqResult::Ok || !response)
-                {
-                    throw std::runtime_error("Nutrition index sync request failed.");
-                }
-
-                if (response->statusCode() != drogon::k200OK)
-                {
-                    throw std::runtime_error("Nutrition index sync returned non-200.");
-                }
-
-                const auto body = response->getJsonObject();
-                if (!body)
-                {
-                    throw std::runtime_error("Nutrition index sync returned invalid JSON.");
-                }
-
-                if (const auto apiError = extractPublicApiErrorMessage(*body);
-                    apiError.has_value())
-                {
-                    throw std::runtime_error(*apiError);
-                }
-
-                if (!totalCountResolved)
-                {
-                    if (const auto totalCount = extractTotalCount(*body);
-                        totalCount.has_value())
-                    {
-                        totalPages = (*totalCount + kNumOfRows - 1U) / kNumOfRows;
-                        if (totalPages == 0U)
-                        {
-                            totalPages = 1U;
-                        }
-                    }
-                    totalCountResolved = true;
-                }
-
-                const auto rows = extractRows(*body);
-                mapper.upsertFoods(mapRowsToFoods(rows, false));
-
-                if (rows.empty())
-                {
-                    break;
-                }
-                if (pageNo == totalPages)
-                {
-                    break;
-                }
-
-                ++pageNo;
-            }
-
-            gPublicNutritionSyncFailed.store(false);
-        }
-        catch (const std::exception &)
-        {
-            gPublicNutritionSyncFailed.store(true);
-        }
-
-        gPublicNutritionSyncRunning.store(false);
-    }).detach();
-}
-
-void IngredientService::searchProcessedFoodsFromPublicApi(
-    const std::string &keyword,
-    ProcessedFoodSearchCallback &&callback)
-{
-    ProcessedFoodSearchResultDTO invalidInput;
-    const auto normalizedKeyword = trim(keyword);
-
-    // 검색 키워드는 필수다.
-    // 공백만 입력한 요청은 외부 API를 호출하지 않고 바로 400으로 끝낸다.
-    if (normalizedKeyword.empty())
-    {
-        invalidInput.statusCode = 400;
-        invalidInput.message = "Keyword is required.";
-        callback(std::move(invalidInput));
-        return;
-    }
-
-    // 공공 API 키는 환경변수 또는 로컬 설정 파일에서 가져올 수 있다.
-    // 배포 환경은 환경변수를 우선하고, 로컬 개발 환경은 keys.local.json을 보조로 사용한다.
-    auto serviceKey = getEnvValue("PUBLIC_NUTRI_SERVICE_KEY");
-    if (!serviceKey.has_value())
-    {
-        serviceKey = getServiceKeyFromLocalFile();
-    }
-
-    if (!serviceKey.has_value())
-    {
-        // API 키가 없으면 외부 호출 자체가 불가능하므로 서버 설정 오류로 반환한다.
-        ProcessedFoodSearchResultDTO keyError;
-        keyError.statusCode = 500;
-        keyError.message =
-            "PUBLIC_NUTRI_SERVICE_KEY is not configured. "
-            "Set env var or backend/config/keys.local.json.";
-        callback(std::move(keyError));
-        return;
-    }
-
-    // API 키와 검색어를 URL 인코딩해 요청 경로를 만든다.
-    // 키나 검색어에 특수문자가 있어도 쿼리 문자열이 깨지지 않게 한다.
-    const auto encodedKeyword = looksLikePercentEncoded(normalizedKeyword)
-                                    ? normalizedKeyword
-                                    : drogon::utils::urlEncodeComponent(
-                                          normalizedKeyword);
-    const auto path =
-        "/openapi/tn_pubr_public_nutri_process_info_api"
-        "?serviceKey=" +
-        drogon::utils::urlEncodeComponent(*serviceKey) +
-        "&type=json&pageNo=1&numOfRows=10&foodNm=" +
-        encodedKeyword;
-
-    // Some Windows environments fail hostname resolution in Drogon's async resolver
-    // and return ReqResult::BadServerAddress. Connect by IP and pin Host header.
-    // validateCert=false is required because TLS cert CN is the domain, not raw IP.
-    auto client = drogon::HttpClient::newHttpClient("https://27.101.215.193",
-                                                    nullptr,
-                                                    false,
-                                                    false);
-    auto request = drogon::HttpRequest::newHttpRequest();
-    request->setMethod(drogon::Get);
-    request->setPathEncode(false);
-    request->setPath(path);
-    request->addHeader("Host", "api.data.go.kr");
-
-    // 외부 API를 비동기로 호출하고 응답 본문을 DTO 목록으로 매핑해 콜백으로 반환한다.
-    // 이 함수는 즉시 반환되고, 실제 결과는 람다 내부에서 callback으로 전달된다.
-    client->sendRequest(
-        request,
-        [callback = std::move(callback)](drogon::ReqResult reqResult,
-                                         const drogon::HttpResponsePtr &response) mutable {
-            ProcessedFoodSearchResultDTO result;
-
-            // 네트워크 또는 프로토콜 수준 실패를 처리한다.
-            if (reqResult != drogon::ReqResult::Ok || !response)
-            {
-                // API 서버에 도달하지 못했거나 Drogon이 응답 객체를 만들지 못한 경우다.
-                result.statusCode = 502;
-                result.message = "Failed to call nutrition public API. (ReqResult: " +
-                                 drogon::to_string(reqResult) + ")";
-                callback(std::move(result));
-                return;
-            }
-
-            // 외부 API의 200이 아닌 응답을 처리한다.
-            if (response->statusCode() != drogon::k200OK)
-            {
-                // 외부 API 장애나 인증 오류는 우리 서비스 관점에서 bad gateway로 전달한다.
-                result.statusCode = 502;
-                result.message = "Nutrition public API returned error.";
-                callback(std::move(result));
-                return;
-            }
-
-            // 응답 본문은 유효한 JSON이어야 한다.
-            const auto body = response->getJsonObject();
-            if (!body)
-            {
-                // HTTP는 성공했지만 JSON 파싱이 안 되면 외부 응답 형식 오류로 본다.
-                result.statusCode = 502;
-                result.message = "Invalid response from nutrition public API.";
-                callback(std::move(result));
-                return;
-            }
-
-            // Public API can report application errors in JSON while HTTP is 200.
-            if (body->isMember("response") && (*body)["response"].isObject())
-            {
-                const auto &responseRoot = (*body)["response"];
-                if (responseRoot.isMember("header") &&
-                    responseRoot["header"].isObject())
-                {
-                    const auto &header = responseRoot["header"];
-                    const auto resultCode =
-                        firstStringFromKeys(header, {"resultCode", "RESULT_CODE"});
-                    const auto resultMsg =
-                        firstStringFromKeys(header, {"resultMsg", "RESULT_MSG"});
-
-                    if (resultCode.has_value() && *resultCode != "00")
-                    {
-                        result.statusCode = 502;
-                        result.message = "Nutrition public API error (" +
-                                         *resultCode + "): " +
-                                         resultMsg.value_or("Unknown error.");
-                        callback(std::move(result));
-                        return;
-                    }
-                }
-            }
-
-            const auto rows = extractRows(*body);
-            result.foods.reserve(rows.size());
-            std::unordered_set<std::string> seenFoodNames;
-            seenFoodNames.reserve(rows.size());
-
-            for (const auto &row : rows)
-            {
-                // 각 결과 항목에는 식품 코드와 식품명이 필수다.
-                // 둘 중 하나라도 없으면 프론트에서 선택 가능한 식품으로 쓰기 어렵기 때문에 제외한다.
-                auto foodCode =
-                    firstStringFromKeys(row, {"foodCd", "FOOD_CD"});
-                auto foodName =
-                    firstStringFromKeys(row, {"foodNm", "FOOD_NM"});
-                if (!foodCode.has_value() || !foodName.has_value())
-                {
-                    continue;
-                }
-                if (!seenFoodNames.insert(*foodName).second)
-                {
-                    continue;
-                }
-
-                ProcessedFoodSearchItemDTO dto;
-                dto.foodCode = *foodCode;
-                dto.foodName = *foodName;
-                // 식품 분류는 가장 상세한 단계부터 후보 키를 확인한다.
-                dto.foodGroupName = firstStringFromKeys(
-                    row,
-                    {"foodLv6Nm", "foodLv5Nm", "foodLv4Nm", "foodLv3Nm",
-                     "foodLv7Nm", "FOOD_LV6_NM", "FOOD_LV5_NM", "FOOD_LV4_NM",
-                     "FOOD_LV3_NM", "FOOD_LV7_NM"});
-
-                // 주요 영양 성분 값을 매핑한다.
-                // 값이 없거나 숫자로 파싱되지 않는 항목은 nullopt로 남긴다.
-                dto.nutritionBasisAmount = firstStringFromKeys(
-                    row, {"nutConSrtrQua", "NUT_CON_SRTR_QUA"});
-                dto.energyKcal = firstDoubleFromKeys(row, {"enerc", "ENERC"});
-                dto.proteinG = firstDoubleFromKeys(row, {"prot", "PROT"});
-                dto.fatG = firstDoubleFromKeys(row, {"fatce", "FATCE"});
-                dto.carbohydrateG =
-                    firstDoubleFromKeys(row, {"chocdf", "CHOCDF"});
-                dto.sugarG = firstDoubleFromKeys(row, {"sugar", "SUGAR"});
-                dto.sodiumMg = firstDoubleFromKeys(row, {"nat", "NAT"});
-
-                // 원산지와 출처 관련 부가 메타데이터를 매핑한다.
-                // 이 값들은 식재료 생성 시 선택 메타데이터로 함께 저장될 수 있다.
-                dto.sourceName = firstStringFromKeys(row, {"srcNm", "SRC_NM"});
-                dto.manufacturerName =
-                    firstStringFromKeys(row, {"mfrNm", "MFR_NM"});
-                dto.importYn = normalizeImportYn(
-                    firstStringFromKeys(row, {"imptYn", "IMPT_YN"}));
-                dto.originCountryName =
-                    firstStringFromKeys(row, {"cooNm", "COO_NM"});
-                dto.dataBaseDate = normalizeDataBaseDate(
-                    firstStringFromKeys(row, {"crtrYmd", "CRTR_YMD"}));
-
-                result.foods.push_back(std::move(dto));
-            }
-
-            // 유효한 row가 하나도 없어도 검색 자체는 성공한 것으로 응답한다.
-            result.ok = true;
-            result.statusCode = 200;
-            result.message = "Nutrition foods loaded.";
-            callback(std::move(result));
-        },
-        10.0);
-}
-
 std::string IngredientService::trim(std::string value)
 {
-    // 문자열 앞뒤 공백을 제거하는 공용 유틸리티다.
-    // 필수값 검증 전에 호출해서 "   " 같은 입력을 빈 값으로 판단하게 한다.
+    // 臾몄옄???욌뮘 怨듬갚???쒓굅?섎뒗 怨듭슜 ?좏떥由ы떚??
+    // ?꾩닔媛?寃利??꾩뿉 ?몄텧?댁꽌 "   " 媛숈? ?낅젰??鍮?媛믪쑝濡??먮떒?섍쾶 ?쒕떎.
     const auto notSpace = [](unsigned char ch) { return !std::isspace(ch); };
 
     value.erase(value.begin(),
@@ -1259,8 +419,8 @@ std::string IngredientService::trim(std::string value)
 
 std::string IngredientService::toLower(std::string value)
 {
-    // 대소문자 구분 없는 비교를 위해 정규화한다.
-    // storage, importYn 같은 enum성 문자열 비교에서 사용한다.
+    // ??뚮Ц??援щ텇 ?녿뒗 鍮꾧탳瑜??꾪빐 ?뺢퇋?뷀븳??
+    // storage, importYn 媛숈? enum??臾몄옄??鍮꾧탳?먯꽌 ?ъ슜?쒕떎.
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
         return static_cast<char>(std::tolower(ch));
     });
@@ -1269,24 +429,24 @@ std::string IngredientService::toLower(std::string value)
 
 bool IngredientService::isValidDate(const std::string &value)
 {
-    // API 입력 날짜 형식을 엄격하게 확인한다.
-    // 여기서는 "2024-05-12" 같은 문자열 모양만 확인하고 실제 존재 날짜 검증은 하지 않는다.
+    // API ?낅젰 ?좎쭨 ?뺤떇???꾧꺽?섍쾶 ?뺤씤?쒕떎.
+    // ?ш린?쒕뒗 "2024-05-12" 媛숈? 臾몄옄??紐⑥뼇留??뺤씤?섍퀬 ?ㅼ젣 議댁옱 ?좎쭨 寃利앹? ?섏? ?딅뒗??
     static const std::regex pattern("^[0-9]{4}-[0-9]{2}-[0-9]{2}$");
     return std::regex_match(value, pattern);
 }
 
 bool IngredientService::isAllowedClientStorage(const std::string &value)
 {
-    // 클라이언트에서 지원하는 보관 위치 열거형 목록이다.
-    // 새 보관 위치가 추가되면 여기와 toDbStorage/toClientStorage를 함께 갱신해야 한다.
+    // ?대씪?댁뼵?몄뿉??吏?먰븯??蹂닿? ?꾩튂 ?닿굅??紐⑸줉?대떎.
+    // ??蹂닿? ?꾩튂媛 異붽??섎㈃ ?ш린? toDbStorage/toClientStorage瑜??④퍡 媛깆떊?댁빞 ?쒕떎.
     return value == "fridge" || value == "freezer" || value == "roomtemp" ||
            value == "other";
 }
 
 std::string IngredientService::toDbStorage(const std::string &clientValue)
 {
-    // 클라이언트 열거형 값을 DB 열거형 값으로 변환한다.
-    // 컨트롤러와 프론트엔드는 소문자 값을 쓰고, DB는 대문자 enum 값을 쓴다.
+    // ?대씪?댁뼵???닿굅??媛믪쓣 DB ?닿굅??媛믪쑝濡?蹂?섑븳??
+    // 而⑦듃濡ㅻ윭? ?꾨줎?몄뿏?쒕뒗 ?뚮Ц??媛믪쓣 ?곌퀬, DB???臾몄옄 enum 媛믪쓣 ?대떎.
     if (clientValue == "fridge")
     {
         return "FRIDGE";
@@ -1304,8 +464,8 @@ std::string IngredientService::toDbStorage(const std::string &clientValue)
 
 std::string IngredientService::toClientStorage(const std::string &dbValue)
 {
-    // DB 열거형 값을 클라이언트 열거형 값으로 되돌린다.
-    // DB에서 이미 소문자 형태로 내려오는 경우도 대비해 trim/toLower를 먼저 적용한다.
+    // DB ?닿굅??媛믪쓣 ?대씪?댁뼵???닿굅??媛믪쑝濡??섎룎由곕떎.
+    // DB?먯꽌 ?대? ?뚮Ц???뺥깭濡??대젮?ㅻ뒗 寃쎌슦???鍮꾪빐 trim/toLower瑜?癒쇱? ?곸슜?쒕떎.
     const auto normalized = toLower(trim(dbValue));
     if (normalized == "fridge")
     {
@@ -1325,8 +485,8 @@ std::string IngredientService::toClientStorage(const std::string &dbValue)
 std::optional<std::string> IngredientService::normalizeImportYn(
     const std::optional<std::string> &value)
 {
-    // 수입 여부 플래그는 Y/N만 남기도록 정규화한다.
-    // 알 수 없는 값은 잘못된 문자열을 저장하지 않고 값 없음으로 처리한다.
+    // ?섏엯 ?щ? ?뚮옒洹몃뒗 Y/N留??④린?꾨줉 ?뺢퇋?뷀븳??
+    // ?????녿뒗 媛믪? ?섎せ??臾몄옄?댁쓣 ??ν븯吏 ?딄퀬 媛??놁쓬?쇰줈 泥섎━?쒕떎.
     if (!value.has_value())
     {
         return std::nullopt;
@@ -1346,98 +506,13 @@ std::optional<std::string> IngredientService::normalizeImportYn(
 
 void IngredientService::normalizeIngredientForClient(IngredientDTO &ingredient)
 {
-    // 매퍼 결과 필드를 클라이언트 계약에 맞게 정규화한다.
-    // 이 함수를 거친 DTO만 컨트롤러 응답으로 나가도록 유지하면 표현 변환이 한곳에 모인다.
+    // 留ㅽ띁 寃곌낵 ?꾨뱶瑜??대씪?댁뼵??怨꾩빟??留욊쾶 ?뺢퇋?뷀븳??
+    // ???⑥닔瑜?嫄곗튇 DTO留?而⑦듃濡ㅻ윭 ?묐떟?쇰줈 ?섍??꾨줉 ?좎??섎㈃ ?쒗쁽 蹂?섏씠 ?쒓납??紐⑥씤??
     ingredient.storage = toClientStorage(ingredient.storage);
     ingredient.importYn = normalizeImportYn(ingredient.importYn);
     ingredient.dataBaseDate = normalizeDataBaseDate(ingredient.dataBaseDate);
 }
 
-std::optional<std::string> IngredientService::getEnvValue(const char *key)
-{
-    // 비어 있지 않은 환경변수 값만 반환한다.
-    // 비어 있는 문자열은 설정되지 않은 것과 동일하게 취급한다.
-    const auto *raw = std::getenv(key);
-    if (raw == nullptr)
-    {
-        return std::nullopt;
-    }
+}  // namespace ingredient
 
-    const std::string value(raw);
-    if (value.empty())
-    {
-        return std::nullopt;
-    }
-    return value;
-}
 
-std::optional<std::string> IngredientService::getServiceKeyFromLocalFile()
-{
-    // 파일 시스템을 반복해서 읽지 않도록 조회 결과를 한 번만 캐시한다.
-    // 실패 결과도 loaded=true로 기억해서 요청마다 같은 파일들을 반복 탐색하지 않는다.
-    static bool loaded = false;
-    static std::optional<std::string> cached;
-    if (loaded)
-    {
-        return cached;
-    }
-    loaded = true;
-
-    // 실행 위치가 달라도 찾을 수 있도록 가능한 설정 파일 경로를 순서대로 시도한다.
-    // 서버를 프로젝트 루트, backend 폴더, 빌드 폴더 어디에서 실행해도 로컬 키를 찾기 위한 방어다.
-    const std::vector<std::filesystem::path> candidates = {
-        std::filesystem::path("config") / "keys.local.json",
-        std::filesystem::path("backend") / "config" / "keys.local.json",
-        std::filesystem::path("..") / "config" / "keys.local.json",
-        std::filesystem::path("..") / ".." / "config" / "keys.local.json",
-        std::filesystem::path("..") / ".." / ".." / "config" / "keys.local.json",
-    };
-
-    for (const auto &path : candidates)
-    {
-        // 존재하지 않는 후보 경로는 건너뛴다.
-        if (!std::filesystem::exists(path))
-        {
-            continue;
-        }
-
-        // JSON 설정 파일을 열고 파싱한다.
-        std::ifstream file(path);
-        if (!file.is_open())
-        {
-            continue;
-        }
-
-        Json::Value root;
-        Json::CharReaderBuilder builder;
-        std::string errors;
-        if (!Json::parseFromStream(builder, file, &root, &errors))
-        {
-            // 깨진 JSON 파일은 무시하고 다음 후보 경로를 확인한다.
-            continue;
-        }
-
-        // publicNutriServiceKey 키가 있는지 확인한다.
-        if (!root.isObject() || !root["publicNutriServiceKey"].isString())
-        {
-            // 파일은 있어도 기대한 키가 없으면 다른 후보를 계속 확인한다.
-            continue;
-        }
-
-        // 공백 제거 후 비어 있지 않은 키만 사용한다.
-        auto value = trim(root["publicNutriServiceKey"].asString());
-        if (value.empty())
-        {
-            continue;
-        }
-
-        // 성공한 조회 결과를 캐시한다.
-        cached = value;
-        return cached;
-    }
-
-    // 모든 후보 경로에서 키를 찾지 못한 경우다.
-    return std::nullopt;
-}
-
-}  // 식재료 네임스페이스

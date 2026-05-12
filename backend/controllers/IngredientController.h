@@ -8,6 +8,7 @@
 #include <optional>
 
 #include "../services/IngredientService.h"
+#include "../services/ProcessedFoodSearchService.h"
 
 namespace ingredient
 {
@@ -64,8 +65,11 @@ class IngredientController
     void handleSearchProcessedFoods(const drogon::HttpRequestPtr &request,
                                     Callback &&callback);
 
-    // 식재료 도메인 비즈니스 로직 서비스 객체
+    // 식재료 CRUD 도메인 비즈니스 로직 서비스 객체
     IngredientService ingredientService_;
+
+    // 가공식품 검색 전용 서비스 객체
+    ProcessedFoodSearchService processedFoodSearchService_;
 };
 
 }  // namespace ingredient

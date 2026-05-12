@@ -318,6 +318,9 @@
     }
 
     document.addEventListener('DOMContentLoaded', async function() {
+      if (!(await app.requireAuth())) {
+        return;
+      }
       await renderIngredientSelection();
       renderNotifications();
     });

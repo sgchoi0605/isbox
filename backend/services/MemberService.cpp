@@ -8,6 +8,7 @@
 #include <cctype>
 #include <functional>
 #include <random>
+#include <sstream>
 
 namespace
 {
@@ -31,6 +32,137 @@ bool looksLikeDuplicateEmail(const std::string &message)
 
     return lowered.find("duplicate") != std::string::npos ||
            lowered.find("uq_members_email") != std::string::npos;
+}
+
+std::string trimCopy(std::string value)
+{
+    const auto notSpace = [](unsigned char ch) { return !std::isspace(ch); };
+
+    value.erase(value.begin(),
+                std::find_if(value.begin(), value.end(), notSpace));
+    value.erase(
+        std::find_if(value.rbegin(), value.rend(), notSpace).base(), value.end());
+
+    return value;
+}
+
+std::string toJsonArrayString(const std::vector<std::string> &values)
+{
+    Json::Value jsonArray(Json::arrayValue);
+    for (const auto &value : values)
+    {
+        const auto trimmed = trimCopy(value);
+        if (!trimmed.empty())
+        {
+            jsonArray.append(trimmed);
+        }
+    }
+
+    Json::StreamWriterBuilder writerBuilder;
+    writerBuilder["indentation"] = "";
+    return Json::writeString(writerBuilder, jsonArray);
+}
+
+std::vector<std::string> parseJsonStringArray(const std::string &jsonText)
+{
+    std::vector<std::string> out;
+    if (jsonText.empty())
+    {
+        return out;
+    }
+
+    std::istringstream input(jsonText);
+    Json::Value root;
+    Json::CharReaderBuilder readerBuilder;
+    std::string errors;
+    if (!Json::parseFromStream(readerBuilder, input, &root, &errors) ||
+        !root.isArray())
+    {
+        return out;
+    }
+
+    out.reserve(root.size());
+    for (const auto &item : root)
+    {
+        if (!item.isString())
+        {
+            continue;
+        }
+
+        const auto value = trimCopy(item.asString());
+        if (!value.empty())
+        {
+            out.push_back(value);
+        }
+    }
+
+    return out;
+}
+
+std::optional<std::string> normalizeCompletedAt(
+    const std::optional<std::string> &completedAt)
+{
+    if (!completedAt.has_value())
+    {
+        return std::nullopt;
+    }
+
+    auto value = trimCopy(*completedAt);
+    if (value.empty())
+    {
+        return std::nullopt;
+    }
+
+    if (value.size() == 10U)
+    {
+        return value + " 00:00:00";
+    }
+
+    if (value.size() >= 19U)
+    {
+        value = value.substr(0, 19);
+        if (value[10] == 'T')
+        {
+            value[10] = ' ';
+        }
+        if (value[10] == ' ')
+        {
+            return value;
+        }
+    }
+
+    return std::nullopt;
+}
+
+auth::FoodMbtiDTO toFoodMbtiDTO(const auth::FoodMbtiModel &model)
+{
+    auth::FoodMbtiDTO dto;
+    dto.type = model.type;
+    dto.title = model.title;
+    dto.description = model.description;
+    dto.traits = parseJsonStringArray(model.traitsJson);
+    dto.recommendedFoods = parseJsonStringArray(model.recommendedFoodsJson);
+    dto.completedAt = model.completedAt;
+    return dto;
+}
+
+auth::MemberProfileDTO toMemberProfileDTO(
+    const auth::MemberModel &member,
+    bool isMe,
+    const std::optional<auth::FoodMbtiModel> &foodMbti)
+{
+    auth::MemberProfileDTO profile;
+    profile.memberId = member.memberId;
+    profile.name = member.name;
+    profile.email = member.email;
+    profile.level = member.level;
+    profile.exp = member.exp;
+    profile.isMe = isMe;
+    if (foodMbti.has_value())
+    {
+        profile.foodMbti = toFoodMbtiDTO(*foodMbti);
+    }
+    return profile;
 }
 
 }  // 익명 네임스페이스
@@ -532,6 +664,183 @@ AwardExperienceResultDTO MemberService::awardExperience(
     {
         result.statusCode = 500;
         result.message = "Server error while updating experience.";
+        return result;
+    }
+}
+
+SaveFoodMbtiResultDTO MemberService::saveMyFoodMbti(
+    const std::string &sessionToken,
+    const SaveFoodMbtiRequestDTO &request)
+{
+    SaveFoodMbtiResultDTO result;
+
+    const auto type = trim(request.type);
+    const auto title = trim(request.title);
+    const auto description = trim(request.description);
+
+    if (type.empty() || title.empty())
+    {
+        result.statusCode = 400;
+        result.message = "Please fill in all required fields.";
+        return result;
+    }
+
+    try
+    {
+        const auto memberId = resolveSessionMemberId(sessionToken);
+        if (!memberId.has_value())
+        {
+            result.statusCode = 401;
+            result.message = "Unauthorized.";
+            return result;
+        }
+
+        const auto member = mapper_.findById(*memberId);
+        if (!member.has_value() || member->status != "ACTIVE")
+        {
+            result.statusCode = 401;
+            result.message = "Unauthorized.";
+            return result;
+        }
+
+        mapper_.upsertFoodMbti(*memberId,
+                               type,
+                               title,
+                               description,
+                               toJsonArrayString(request.traits),
+                               toJsonArrayString(request.recommendedFoods),
+                               normalizeCompletedAt(request.completedAt));
+
+        const auto saved = mapper_.findFoodMbtiByMemberId(*memberId);
+        if (!saved.has_value())
+        {
+            result.statusCode = 500;
+            result.message = "Failed to load member.";
+            return result;
+        }
+
+        result.ok = true;
+        result.statusCode = 200;
+        result.message = "Food MBTI saved.";
+        result.foodMbti = toFoodMbtiDTO(*saved);
+        return result;
+    }
+    catch (const drogon::orm::DrogonDbException &)
+    {
+        result.statusCode = 500;
+        result.message = "Database error while updating profile.";
+        return result;
+    }
+    catch (const std::exception &)
+    {
+        result.statusCode = 500;
+        result.message = "Server error while updating profile.";
+        return result;
+    }
+}
+
+MemberProfileResultDTO MemberService::getMyProfile(const std::string &sessionToken)
+{
+    MemberProfileResultDTO result;
+
+    try
+    {
+        const auto memberId = resolveSessionMemberId(sessionToken);
+        if (!memberId.has_value())
+        {
+            result.statusCode = 401;
+            result.message = "Unauthorized.";
+            return result;
+        }
+
+        const auto member = mapper_.findById(*memberId);
+        if (!member.has_value() || member->status != "ACTIVE")
+        {
+            result.statusCode = 401;
+            result.message = "Unauthorized.";
+            return result;
+        }
+
+        const auto foodMbti = mapper_.findFoodMbtiByMemberId(*memberId);
+
+        result.ok = true;
+        result.statusCode = 200;
+        result.message = "Profile loaded.";
+        result.profile = toMemberProfileDTO(*member, true, foodMbti);
+        return result;
+    }
+    catch (const std::exception &)
+    {
+        result.statusCode = 500;
+        result.message = "Failed to load member.";
+        return result;
+    }
+}
+
+MemberProfileResultDTO MemberService::getMemberProfile(
+    const std::string &sessionToken,
+    std::uint64_t targetMemberId)
+{
+    MemberProfileResultDTO result;
+
+    if (targetMemberId == 0)
+    {
+        result.statusCode = 400;
+        result.message = "Invalid member id.";
+        return result;
+    }
+
+    try
+    {
+        const auto currentMemberId = resolveSessionMemberId(sessionToken);
+        if (!currentMemberId.has_value())
+        {
+            result.statusCode = 401;
+            result.message = "Unauthorized.";
+            return result;
+        }
+
+        const auto currentMember = mapper_.findById(*currentMemberId);
+        if (!currentMember.has_value() || currentMember->status != "ACTIVE")
+        {
+            result.statusCode = 401;
+            result.message = "Unauthorized.";
+            return result;
+        }
+
+        const auto targetMember = mapper_.findById(targetMemberId);
+        if (!targetMember.has_value() || targetMember->status != "ACTIVE")
+        {
+            result.statusCode = 404;
+            result.message = "Member not found.";
+            return result;
+        }
+
+        const bool isMe = targetMemberId == *currentMemberId;
+        if (!isMe)
+        {
+            const auto relationship =
+                friendMapper_.findRelationship(*currentMemberId, targetMemberId);
+            if (!relationship.has_value() || relationship->status != "ACCEPTED")
+            {
+                result.statusCode = 403;
+                result.message = "Forbidden.";
+                return result;
+            }
+        }
+
+        const auto foodMbti = mapper_.findFoodMbtiByMemberId(targetMemberId);
+
+        result.ok = true;
+        result.statusCode = 200;
+        result.message = "Profile loaded.";
+        result.profile = toMemberProfileDTO(*targetMember, isMe, foodMbti);
+        return result;
+    }
+    catch (const std::exception &)
+    {
+        result.statusCode = 500;
+        result.message = "Failed to load member.";
         return result;
     }
 }

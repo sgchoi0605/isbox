@@ -117,8 +117,8 @@
     <div style="max-width: 48rem; margin: 0 auto;">
       <!-- Header -->
       <div class="mb-6">
-        <h1 class="text-3xl font-bold" style="background: linear-gradient(to right, #2563eb, #06b6d4); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">내 정보</h1>
-        <p class="text-gray-600 mt-2">프로필 정보를 확인하고 수정할 수 있습니다.</p>
+        <h1 id="profilePageTitle" class="text-3xl font-bold" style="background: linear-gradient(to right, #2563eb, #06b6d4); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">내 정보</h1>
+        <p id="profilePageDescription" class="text-gray-600 mt-2">프로필 정보를 확인하고 수정할 수 있습니다.</p>
       </div>
 
       <!-- Level Information Card -->
@@ -201,7 +201,7 @@
               </svg>
             </div>
             <p class="text-gray-600" style="margin-bottom: 1rem;">아직 음식 MBTI 테스트를 하지 않았습니다.</p>
-            <a href="food-mbti.html" class="btn" style="background: linear-gradient(to right, #ec4899, #a855f7); color: white;">
+            <a id="mbtiTestLink" href="food-mbti.html" class="btn" style="background: linear-gradient(to right, #ec4899, #a855f7); color: white;">
               지금 테스트하기
             </a>
           </div>
@@ -259,7 +259,7 @@
       </div>
 
       <!-- Friend Management Card -->
-      <div class="card shadow-lg mb-6" style="border-top: 4px solid #8b5cf6;">
+      <div id="friendManagementCard" class="card shadow-lg mb-6" style="border-top: 4px solid #8b5cf6;">
         <div class="card-header">
           <h3 class="card-title flex items-center gap-2">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2">
@@ -305,7 +305,7 @@
       </div>
 
       <!-- Password Change Card -->
-      <div class="card shadow-lg" style="border-top: 4px solid #10b981;">
+      <div id="passwordCard" class="card shadow-lg" style="border-top: 4px solid #10b981;">
         <div class="card-header">
           <h3 class="card-title flex items-center gap-2">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
@@ -415,7 +415,12 @@
       }
     }
 
-    document.addEventListener('DOMContentLoaded', initProfilePage);
+    document.addEventListener('DOMContentLoaded', async function() {
+      if (!(await app.requireAuth())) {
+        return;
+      }
+      // 실제 렌더링은 아래 스크립트에서 프로필 모드(내/친구) 분기와 함께 처리한다.
+    });
 
     // 드롭다운 닫기 (외부 클릭)
     document.addEventListener('click', function(e) {
@@ -429,7 +434,8 @@
   </script>
   <script>
     const friendPageState = {
-      searchedMember: null
+      searchedMember: null,
+      isOwnProfile: true
     };
 
     function escapeFriendHtml(value) {
@@ -441,7 +447,214 @@
         .replace(/'/g, '&#39;');
     }
 
-    function renderFriendRows(containerId, items, emptyText, actionRenderer) {
+    function parseMemberIdFromUrl() {
+      const raw = new URLSearchParams(window.location.search).get('memberId');
+      if (!raw) return null;
+
+      const parsed = Number(raw);
+      if (!Number.isInteger(parsed) || parsed <= 0) {
+        return null;
+      }
+
+      return parsed;
+    }
+
+    function applyProfileMode(isOwnProfile, profile) {
+      const titleEl = document.getElementById('profilePageTitle');
+      const descEl = document.getElementById('profilePageDescription');
+      const editProfileBtn = document.getElementById('editProfileBtn');
+      const profileActions = document.getElementById('profileActions');
+      const friendManagementCard = document.getElementById('friendManagementCard');
+      const passwordCard = document.getElementById('passwordCard');
+      const mbtiTestBtn = document.getElementById('mbtiTestBtn');
+      const mbtiTestLink = document.getElementById('mbtiTestLink');
+      const profileForm = document.getElementById('profileForm');
+
+      if (titleEl) {
+        titleEl.textContent = isOwnProfile ? 'My Profile' : `${profile.name || 'Friend'} Profile`;
+        /*
+        titleEl.textContent = isOwnProfile
+          ? '내 정보'
+          : `${profile.name || '친구'}님의 프로필`;
+      }
+        */
+      }
+      if (descEl) {
+        descEl.textContent = isOwnProfile
+          ? '프로필 정보를 확인하고 수정할 수 있습니다.'
+          : '친구의 공개 프로필입니다.';
+      }
+
+      if (descEl) descEl.textContent = isOwnProfile ? 'Manage profile info.' : 'Public friend profile.';
+      if (editProfileBtn) editProfileBtn.style.display = isOwnProfile ? 'inline-flex' : 'none';
+      if (profileActions) profileActions.style.display = 'none';
+      if (friendManagementCard) friendManagementCard.style.display = isOwnProfile ? '' : 'none';
+      if (passwordCard) passwordCard.style.display = isOwnProfile ? '' : 'none';
+      if (mbtiTestBtn) mbtiTestBtn.style.display = isOwnProfile ? 'inline-flex' : 'none';
+      if (mbtiTestLink) mbtiTestLink.style.display = isOwnProfile ? 'inline-flex' : 'none';
+      if (profileForm) {
+        profileForm.onsubmit = isOwnProfile
+          ? function(e) { e.preventDefault(); app.updateProfile(); }
+          : function(e) { e.preventDefault(); };
+      }
+      return;
+
+      if (titleEl) {
+        /*
+        titleEl.textContent = isOwnProfile ? '내 정보' : `${profile.name || '친구'}님의 프로필`;
+        /*
+        titleEl.textContent = isOwnProfile ? '내 정보' : `${profile.name || '친구'}님의 프로필`;
+      }
+        */
+      }
+      if (titleEl) titleEl.textContent = isOwnProfile ? 'My Profile' : `${profile.name || 'Friend'} Profile`;
+      if (descEl) {
+        descEl.textContent = isOwnProfile
+          ? '프로필 정보를 확인하고 수정할 수 있습니다.'
+          : '친구의 공개 프로필입니다.';
+      }
+
+      if (editProfileBtn) editProfileBtn.style.display = isOwnProfile ? 'inline-flex' : 'none';
+      if (profileActions) profileActions.style.display = 'none';
+      if (friendManagementCard) friendManagementCard.style.display = isOwnProfile ? '' : 'none';
+      if (passwordCard) passwordCard.style.display = isOwnProfile ? '' : 'none';
+      if (mbtiTestBtn) mbtiTestBtn.style.display = isOwnProfile ? 'inline-flex' : 'none';
+      if (mbtiTestLink) mbtiTestLink.style.display = isOwnProfile ? 'inline-flex' : 'none';
+      if (profileForm) {
+        profileForm.onsubmit = isOwnProfile
+          ? function(e) { e.preventDefault(); app.updateProfile(); }
+          : function(e) { e.preventDefault(); };
+      }
+    }
+
+    function renderLevelInfo(profile) {
+      const level = Number(profile.level) > 0 ? Number(profile.level) : 1;
+      const exp = Number(profile.exp) >= 0 ? Number(profile.exp) : 0;
+      const expToNext = app.getExpToNextLevel(level);
+      const expPercentage = (exp / expToNext) * 100;
+
+      const profileLevel = document.getElementById('profileLevel');
+      const profileExp = document.getElementById('profileExp');
+      const profileExpPercent = document.getElementById('profileExpPercent');
+      const expProgress = document.getElementById('expProgress');
+      if (profileLevel) profileLevel.textContent = `Level ${level}`;
+      if (profileExp) profileExp.textContent = `EXP ${exp} / ${expToNext}`;
+      if (profileExpPercent) profileExpPercent.textContent = `${Math.round(expPercentage)}%`;
+      if (expProgress) expProgress.style.width = `${expPercentage}%`;
+      return;
+
+      if (profileLevel) profileLevel.textContent = `레벨 ${level}`;
+      if (profileExp) profileExp.textContent = `경험치 ${exp} / ${expToNext}`;
+      if (profileExpPercent) profileExpPercent.textContent = `${Math.round(expPercentage)}%`;
+      if (expProgress) expProgress.style.width = `${expPercentage}%`;
+    }
+
+    function renderFoodMbti(profile, isOwnProfile) {
+      const mbtiContent = document.getElementById('mbtiContent');
+      const mbtiTestBtn = document.getElementById('mbtiTestBtn');
+      if (!mbtiContent) return;
+
+      const mbtiData = profile.foodMbti || (isOwnProfile ? app.loadFoodMBTI() : null);
+      if (mbtiTestBtn) {
+        mbtiTestBtn.textContent = mbtiData && isOwnProfile ? 'Retake' : 'Take Test';
+        /*
+        mbtiTestBtn.textContent = mbtiData && isOwnProfile ? '다시 하기' : '테스트하기';
+      }
+        */
+      }
+      if (!mbtiData) {
+        mbtiContent.innerHTML = isOwnProfile
+          ? `
+            <div style="text-align: center; padding: 1.5rem 0;">
+              <p class="text-gray-600" style="margin-bottom: 1rem;">아직 음식 MBTI 결과가 없습니다.</p>
+              <a href="food-mbti.html" class="btn" style="background: linear-gradient(to right, #ec4899, #a855f7); color: white;">
+                지금 테스트하기
+              </a>
+            </div>
+          `
+          : `
+            <div style="text-align: center; padding: 1.5rem 0;">
+              <p class="text-gray-600">아직 음식 MBTI 결과가 없습니다.</p>
+            </div>
+          `;
+        return;
+      }
+
+      const safeCompletedAt = mbtiData.completedAt || mbtiData.date;
+      const safeDateText = safeCompletedAt ? new Date(safeCompletedAt).toLocaleDateString('ko-KR') : '';
+      const safeTraits = Array.isArray(mbtiData.traits) ? mbtiData.traits : [];
+      const safeFoods = Array.isArray(mbtiData.recommendedFoods) ? mbtiData.recommendedFoods : [];
+
+      mbtiContent.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <span class="badge" style="font-size: 1.25rem; padding: 0.5rem 1rem; background: linear-gradient(to right, #ec4899, #a855f7); color: white;">
+              ${escapeFriendHtml(mbtiData.type)}
+            </span>
+            <div>
+              <p class="font-medium text-gray-900">${escapeFriendHtml(mbtiData.title)}</p>
+              ${safeDateText ? `<p style="font-size: 0.75rem; color: #6b7280;">${escapeFriendHtml(safeDateText)} 완료</p>` : ''}
+            </div>
+          </div>
+          ${mbtiData.description ? `<p style="font-size: 0.875rem; color: #4b5563;">${escapeFriendHtml(mbtiData.description)}</p>` : ''}
+          ${safeTraits.length > 0 ? `<div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">${safeTraits.map(trait => `<span class="badge badge-outline">${escapeFriendHtml(trait)}</span>`).join('')}</div>` : ''}
+          ${safeFoods.length > 0 ? `<div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">${safeFoods.map(food => `<span class="badge" style="background: linear-gradient(to right, #ec4899, #a855f7); color: white;">${escapeFriendHtml(food)}</span>`).join('')}</div>` : ''}
+        </div>
+      `;
+      return;
+
+      if (mbtiTestBtn) {
+        /*
+        mbtiTestBtn.textContent = mbtiData && isOwnProfile ? '다시 하기' : '테스트하기';
+        /*
+        mbtiTestBtn.textContent = mbtiData && isOwnProfile ? '다시 하기' : '테스트하기';
+      }
+
+        */
+      }
+      if (mbtiTestBtn) mbtiTestBtn.textContent = mbtiData && isOwnProfile ? 'Retake' : 'Take Test';
+      if (!mbtiData) {
+        mbtiContent.innerHTML = isOwnProfile
+          ? `
+            <div style="text-align: center; padding: 1.5rem 0;">
+              <p class="text-gray-600" style="margin-bottom: 1rem;">아직 음식 MBTI 테스트를 하지 않았습니다.</p>
+              <a id="mbtiTestLink" href="food-mbti.html" class="btn" style="background: linear-gradient(to right, #ec4899, #a855f7); color: white;">
+                지금 테스트하기
+              </a>
+            </div>
+          `
+          : `
+            <div style="text-align: center; padding: 1.5rem 0;">
+              <p class="text-gray-600">아직 음식 MBTI 결과가 없습니다.</p>
+            </div>
+          `;
+        return;
+      }
+
+      const completedAt = mbtiData.completedAt || mbtiData.date;
+      const dateText = completedAt ? new Date(completedAt).toLocaleDateString('ko-KR') : '';
+      const traits = Array.isArray(mbtiData.traits) ? mbtiData.traits : [];
+      const foods = Array.isArray(mbtiData.recommendedFoods) ? mbtiData.recommendedFoods : [];
+
+      mbtiContent.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <span class="badge" style="font-size: 1.25rem; padding: 0.5rem 1rem; background: linear-gradient(to right, #ec4899, #a855f7); color: white;">
+              ${escapeFriendHtml(mbtiData.type)}
+            </span>
+            <div>
+              <p class="font-medium text-gray-900">${escapeFriendHtml(mbtiData.title)}</p>
+              ${dateText ? `<p style="font-size: 0.75rem; color: #6b7280;">${escapeFriendHtml(dateText)} 완료</p>` : ''}
+            </div>
+          </div>
+          ${mbtiData.description ? `<p style="font-size: 0.875rem; color: #4b5563;">${escapeFriendHtml(mbtiData.description)}</p>` : ''}
+          ${traits.length > 0 ? `<div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">${traits.map(trait => `<span class="badge badge-outline">${escapeFriendHtml(trait)}</span>`).join('')}</div>` : ''}
+          ${foods.length > 0 ? `<div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">${foods.map(food => `<span class="badge" style="background: linear-gradient(to right, #ec4899, #a855f7); color: white;">${escapeFriendHtml(food)}</span>`).join('')}</div>` : ''}
+        </div>
+      `;
+    }
+
+    function renderFriendRows(containerId, items, emptyText, actionRenderer, options = {}) {
       const container = document.getElementById(containerId);
       if (!container) return;
 
@@ -455,6 +668,11 @@
           const statusText = String(item.status || '').toUpperCase();
           const subText = item.respondedAt || item.requestedAt || '';
           const actions = actionRenderer ? actionRenderer(item) : '';
+          const memberId = Number(item.memberId);
+          const canLink = options.linkToProfile && Number.isInteger(memberId) && memberId > 0;
+          const nameHtml = canLink
+            ? `<a href="profile.html?memberId=${memberId}" class="text-sm font-medium" style="color: #2563eb; text-decoration: underline;">${escapeFriendHtml(item.name || '이름 없음')}</a>`
+            : `<p class="text-sm font-medium text-gray-900">${escapeFriendHtml(item.name || '이름 없음')}</p>`;
 
           return `
             <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.75rem; border: 1px solid #e5e7eb; border-radius: 0.5rem; background: #ffffff;">
@@ -505,6 +723,10 @@
     }
 
     async function refreshFriendSections() {
+      if (!friendPageState.isOwnProfile) {
+        return;
+      }
+
       try {
         const [incomingRequests, outgoingRequests, friends] = await Promise.all([
           app.loadIncomingFriendRequests(),
@@ -530,12 +752,30 @@
         );
 
         renderFriendRows('friendList', friends, '아직 친구가 없습니다.');
+        const friendList = document.getElementById('friendList');
+        if (friendList) {
+          const nameNodes = friendList.querySelectorAll('p.text-sm.font-medium.text-gray-900');
+          nameNodes.forEach((node, idx) => {
+            const friend = friends[idx];
+            const memberId = Number(friend?.memberId);
+            if (!Number.isInteger(memberId) || memberId <= 0) return;
+            const link = document.createElement('a');
+            link.href = `profile.html?memberId=${memberId}`;
+            link.className = 'text-sm font-medium';
+            link.style.color = '#2563eb';
+            link.style.textDecoration = 'underline';
+            link.textContent = node.textContent || '친구';
+            node.replaceWith(link);
+          });
+        }
       } catch (error) {
         app.showToast(error.message, 'error');
       }
     }
 
     async function searchFriendMember() {
+      if (!friendPageState.isOwnProfile) return;
+
       const input = document.getElementById('friendSearchEmail');
       if (!input) return;
 
@@ -557,6 +797,8 @@
     }
 
     async function sendFriendRequestToSearchedMember() {
+      if (!friendPageState.isOwnProfile) return;
+
       const member = friendPageState.searchedMember;
       if (!member?.email) {
         app.showToast('요청할 사용자를 먼저 검색해주세요.', 'error');
@@ -604,6 +846,47 @@
 
     document.addEventListener('DOMContentLoaded', function() {
       void (async function() {
+        try {
+          if (!app.state.user?.loggedIn) {
+            const ok = await app.checkAuth();
+            if (!ok) {
+              return;
+            }
+          }
+
+          const targetMemberId = parseMemberIdFromUrl();
+          friendPageState.isOwnProfile = !targetMemberId ||
+            Number(targetMemberId) === Number(app.state.user?.memberId);
+
+          let profile = await app.loadMemberProfile(
+            friendPageState.isOwnProfile ? undefined : targetMemberId
+          );
+
+          if (friendPageState.isOwnProfile && !profile.foodMbti) {
+            const localMbti = app.loadFoodMBTI();
+            if (localMbti) {
+              await app.saveFoodMBTIToServer(localMbti, { silent: true });
+              profile = await app.loadMemberProfile();
+            }
+          }
+
+          const nameInput = document.getElementById('profileName');
+          const emailInput = document.getElementById('profileEmail');
+          if (nameInput) nameInput.value = profile.name || '';
+          if (emailInput) emailInput.value = profile.email || '';
+          if (nameInput) nameInput.disabled = true;
+          if (emailInput) emailInput.disabled = true;
+
+          applyProfileMode(friendPageState.isOwnProfile, profile);
+          renderLevelInfo(profile);
+          renderFoodMbti(profile, friendPageState.isOwnProfile);
+          await refreshFriendSections();
+          return;
+        } catch (error) {
+          app.showToast(error.message, 'error');
+          return;
+        }
+
         if (!app.state.user?.loggedIn) {
           const ok = await app.checkAuth();
           if (!ok) {

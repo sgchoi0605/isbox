@@ -652,7 +652,7 @@ void IngredientController::handleSearchProcessedFoods(
     const auto keyword = request->getParameter("keyword");
 
     // 가공식품 검색은 서비스 계층의 비동기 콜백으로 처리한다.
-    ingredientService_.searchProcessedFoods(
+    processedFoodSearchService_.searchProcessedFoods(
         keyword,
         [request, callback = std::move(callback)](
             ProcessedFoodSearchResultDTO result) mutable {
@@ -681,4 +681,3 @@ void IngredientController::handleSearchProcessedFoods(
 }
 
 }  // namespace ingredient
-

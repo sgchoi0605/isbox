@@ -442,7 +442,12 @@
       }
     }
 
-    document.addEventListener('DOMContentLoaded', initHomePage);
+    document.addEventListener('DOMContentLoaded', async function() {
+      if (!(await app.requireAuth())) {
+        return;
+      }
+      await initHomePage();
+    });
 
     // 드롭다운 닫기 (외부 클릭)
     document.addEventListener('click', function(e) {

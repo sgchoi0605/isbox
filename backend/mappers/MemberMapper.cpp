@@ -35,6 +35,20 @@ auth::MemberModel rowToMemberModel(const drogon::orm::Row &row)
     return member;
 }
 
+auth::FoodMbtiModel rowToFoodMbtiModel(const drogon::orm::Row &row)
+{
+    auth::FoodMbtiModel model;
+    model.memberId = row["member_id"].as<std::uint64_t>();
+    model.type = row["mbti_type"].as<std::string>();
+    model.title = row["title"].as<std::string>();
+    model.description = row["description"].as<std::string>();
+    model.traitsJson = row["traits_json"].as<std::string>();
+    model.recommendedFoodsJson = row["recommended_foods_json"].as<std::string>();
+    model.completedAt = row["completed_at"].as<std::string>();
+    model.updatedAt = row["updated_at"].as<std::string>();
+    return model;
+}
+
 }  // namespace
 
 namespace auth
@@ -138,6 +152,67 @@ void MemberMapper::updateLevelAndExp(std::uint64_t memberId,
         memberId);
 }
 
+void MemberMapper::upsertFoodMbti(
+    std::uint64_t memberId,
+    const std::string &type,
+    const std::string &title,
+    const std::string &description,
+    const std::string &traitsJson,
+    const std::string &recommendedFoodsJson,
+    const std::optional<std::string> &completedAt) const
+{
+    ensureMemberFoodMbtiTable();
+
+    const auto dbClient = drogon::app().getDbClient("default");
+    const auto completedAtValue = completedAt.has_value() ? *completedAt : "";
+
+    dbClient->execSqlSync(
+        "INSERT INTO member_food_mbti ("
+        "member_id, mbti_type, title, description, traits_json, recommended_foods_json, completed_at"
+        ") VALUES (?, ?, ?, NULLIF(?, ''), ?, ?, IFNULL(NULLIF(?, ''), NOW())) "
+        "ON DUPLICATE KEY UPDATE "
+        "mbti_type = VALUES(mbti_type), "
+        "title = VALUES(title), "
+        "description = VALUES(description), "
+        "traits_json = VALUES(traits_json), "
+        "recommended_foods_json = VALUES(recommended_foods_json), "
+        "completed_at = VALUES(completed_at)",
+        memberId,
+        type,
+        title,
+        description,
+        traitsJson,
+        recommendedFoodsJson,
+        completedAtValue);
+}
+
+std::optional<FoodMbtiModel> MemberMapper::findFoodMbtiByMemberId(
+    std::uint64_t memberId) const
+{
+    ensureMemberFoodMbtiTable();
+
+    const auto dbClient = drogon::app().getDbClient("default");
+    static const std::string sql =
+        "SELECT "
+        "member_id, mbti_type, title, "
+        "COALESCE(description, '') AS description, "
+        "COALESCE(traits_json, '[]') AS traits_json, "
+        "COALESCE(recommended_foods_json, '[]') AS recommended_foods_json, "
+        "COALESCE(DATE_FORMAT(completed_at, '%Y-%m-%d %H:%i:%s'), '') AS completed_at, "
+        "COALESCE(DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s'), '') AS updated_at "
+        "FROM member_food_mbti "
+        "WHERE member_id = ? "
+        "LIMIT 1";
+
+    const auto result = dbClient->execSqlSync(sql, memberId);
+    if (result.empty())
+    {
+        return std::nullopt;
+    }
+
+    return rowToFoodMbtiModel(result[0]);
+}
+
 MemberDTO MemberMapper::toMemberDTO(const MemberModel &member) const
 {
     // API 응답에 노출 가능한 필드만 DTO에 복사한다.
@@ -186,6 +261,35 @@ void MemberMapper::ensureMembersTable() const
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
     // 이후 호출에서는 DDL을 건너뛴다.
+    tableReady.store(true);
+}
+
+void MemberMapper::ensureMemberFoodMbtiTable() const
+{
+    ensureMembersTable();
+
+    static std::atomic_bool tableReady{false};
+    if (tableReady.load())
+    {
+        return;
+    }
+
+    const auto dbClient = drogon::app().getDbClient("default");
+    dbClient->execSqlSync(
+        "CREATE TABLE IF NOT EXISTS member_food_mbti ("
+        "member_id BIGINT UNSIGNED NOT NULL,"
+        "mbti_type VARCHAR(20) NOT NULL,"
+        "title VARCHAR(100) NOT NULL,"
+        "description TEXT NULL,"
+        "traits_json TEXT NULL,"
+        "recommended_foods_json TEXT NULL,"
+        "completed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,"
+        "PRIMARY KEY (member_id),"
+        "CONSTRAINT fk_member_food_mbti_member FOREIGN KEY (member_id) "
+        "REFERENCES members(member_id) ON DELETE CASCADE"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
     tableReady.store(true);
 }
 

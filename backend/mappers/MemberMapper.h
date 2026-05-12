@@ -47,6 +47,17 @@ class MemberMapper
                            unsigned int level,
                            unsigned int exp) const;
 
+    void upsertFoodMbti(std::uint64_t memberId,
+                        const std::string &type,
+                        const std::string &title,
+                        const std::string &description,
+                        const std::string &traitsJson,
+                        const std::string &recommendedFoodsJson,
+                        const std::optional<std::string> &completedAt) const;
+
+    std::optional<FoodMbtiModel> findFoodMbtiByMemberId(
+        std::uint64_t memberId) const;
+
     // 내부 모델(MemberModel)을 외부 응답용 DTO(MemberDTO)로 변환한다.
     // 민감 정보(passwordHash)는 의도적으로 제외한다.
     MemberDTO toMemberDTO(const MemberModel &member) const;
@@ -54,6 +65,7 @@ class MemberMapper
   private:
     // 로컬 개발 환경에서 members 테이블이 없으면 최소 스키마를 생성한다.
     void ensureMembersTable() const;
+    void ensureMemberFoodMbtiTable() const;
 
     // 문자열 파라미터 1개를 바인딩해 단일 회원을 조회하는 공통 헬퍼다.
     std::optional<MemberModel> querySingleMember(const std::string &sql,

@@ -6,6 +6,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "../mappers/FriendMapper.h"
 #include "../mappers/MemberMapper.h"
 #include "../models/MemberTypes.h"
 
@@ -44,6 +45,15 @@ class MemberService
     AwardExperienceResultDTO awardExperience(
         const std::string &sessionToken,
         const AwardExperienceRequestDTO &request);
+
+    SaveFoodMbtiResultDTO saveMyFoodMbti(
+        const std::string &sessionToken,
+        const SaveFoodMbtiRequestDTO &request);
+
+    MemberProfileResultDTO getMyProfile(const std::string &sessionToken);
+
+    MemberProfileResultDTO getMemberProfile(const std::string &sessionToken,
+                                            std::uint64_t targetMemberId);
 
   private:
     // 메모리에 저장되는 세션 정보다.
@@ -90,6 +100,7 @@ class MemberService
 
     // 데이터 접근 객체다.
     MemberMapper mapper_;
+    friendship::FriendMapper friendMapper_;
 
     // 메모리 기반 토큰 저장소다. 토큰에서 세션 정보로 이어지는 형태로 저장한다.
     std::unordered_map<std::string, SessionData> sessions_;

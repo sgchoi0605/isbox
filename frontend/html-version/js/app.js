@@ -23,6 +23,9 @@ const TOAST_MESSAGE_TRANSLATIONS = Object.freeze({
   'Current password is incorrect.': '현재 비밀번호가 올바르지 않습니다.',
   'Email is already registered.': '이미 가입된 이메일입니다.',
   'Unauthorized.': '로그인이 필요합니다.',
+  'Forbidden.': '친구 관계에서만 조회할 수 있습니다.',
+  'Member not found.': '사용자를 찾을 수 없습니다.',
+  'Invalid member id.': '잘못된 사용자 ID입니다.',
   'Invalid action type.': '잘못된 작업 유형입니다.',
   'Invalid storage value.': '보관 위치 값이 올바르지 않습니다.',
   'Invalid expiry date format.': '유통기한 형식이 올바르지 않습니다.',
@@ -75,6 +78,8 @@ const TOAST_MESSAGE_TRANSLATIONS = Object.freeze({
   'Signup failed.': '회원가입에 실패했습니다.',
   'Invalid ingredient response.': '재료 응답 형식이 올바르지 않습니다.',
   'Profile updated.': '프로필이 업데이트되었습니다.',
+  'Profile loaded.': '프로필을 불러왔습니다.',
+  'Food MBTI saved.': '음식 MBTI 결과가 저장되었습니다.',
   'Password updated.': '비밀번호가 변경되었습니다.',
   'Experience updated.': '경험치가 업데이트되었습니다.',
   'Ingredients loaded.': '재료 목록을 불러왔습니다.',
@@ -1143,6 +1148,108 @@ const mbtiResults = {
   }
 };
 
+function normalizeFoodMBTIData(source) {
+  if (!source || typeof source !== 'object') {
+    return null;
+  }
+
+  const type = String(source.type || '').trim();
+  const title = String(source.title || '').trim();
+  if (!type || !title) {
+    return null;
+  }
+
+  const description = String(source.description || '').trim();
+  const traits = Array.isArray(source.traits)
+    ? source.traits.map(item => String(item || '').trim()).filter(Boolean)
+    : [];
+  const recommendedFoods = Array.isArray(source.recommendedFoods)
+    ? source.recommendedFoods.map(item => String(item || '').trim()).filter(Boolean)
+    : [];
+
+  const completedAtRaw = String(source.completedAt || source.date || '').trim();
+  const completedAt = completedAtRaw || new Date().toISOString();
+
+  return {
+    type,
+    title,
+    description,
+    traits,
+    recommendedFoods,
+    completedAt,
+    date: completedAt
+  };
+}
+
+function saveFoodMBTIToStorage(source) {
+  const normalized = normalizeFoodMBTIData(source);
+  if (!normalized) {
+    return null;
+  }
+  storage.set('foodMBTI', normalized);
+  return normalized;
+}
+
+async function saveFoodMBTIToServer(source, options = {}) {
+  const normalized = normalizeFoodMBTIData(source);
+  if (!normalized || !state.user?.loggedIn) {
+    return false;
+  }
+
+  const { silent = true } = options;
+
+  try {
+    const { response, data } = await putJson('/api/members/me/food-mbti', {
+      type: normalized.type,
+      title: normalized.title,
+      description: normalized.description,
+      traits: normalized.traits,
+      recommendedFoods: normalized.recommendedFoods,
+      completedAt: normalized.completedAt
+    });
+
+    if (!response.ok || !data || data.ok === false) {
+      throw new Error(data?.message || '음식 MBTI 저장에 실패했습니다.');
+    }
+
+    if (data.foodMbti) {
+      saveFoodMBTIToStorage(data.foodMbti);
+    }
+
+    return true;
+  } catch (error) {
+    if (!silent) {
+      showToast(error.message, 'error');
+    }
+    return false;
+  }
+}
+
+async function loadMemberProfile(memberId) {
+  const normalizedMemberId = Number(memberId);
+  const isTargetMember =
+    Number.isInteger(normalizedMemberId) && normalizedMemberId > 0;
+
+  const path = isTargetMember
+    ? `/api/members/${encodeURIComponent(normalizedMemberId)}/profile`
+    : '/api/members/profile';
+  const { response, data } = await getJson(path);
+
+  if (!response.ok || !data || data.ok === false || !data.profile) {
+    throw new Error(data?.message || '프로필을 불러오지 못했습니다.');
+  }
+
+  const profile = data.profile;
+
+  if (profile.isMe) {
+    if (profile.foodMbti) {
+      saveFoodMBTIToStorage(profile.foodMbti);
+    }
+  }
+
+  return profile;
+}
+
 function saveFoodMBTI(answers) {
   const mbtiType = answers.join('');
   let result = mbtiResults[mbtiType];
@@ -1160,17 +1267,21 @@ function saveFoodMBTI(answers) {
   const mbtiData = {
     type: result.type,
     title: result.title,
-    date: new Date().toISOString()
+    description: result.description,
+    traits: result.traits,
+    recommendedFoods: result.recommendedFoods,
+    completedAt: new Date().toISOString()
   };
 
-  storage.set('foodMBTI', mbtiData);
+  saveFoodMBTIToStorage(mbtiData);
+  void saveFoodMBTIToServer(mbtiData);
   void addExp('FOOD_MBTI_COMPLETE', '푸드 MBTI 테스트 완료');
 
   return result;
 }
 
 function loadFoodMBTI() {
-  return storage.get('foodMBTI');
+  return normalizeFoodMBTIData(storage.get('foodMBTI'));
 }
 
 function activateCurrentNav() {
@@ -1190,6 +1301,10 @@ document.addEventListener('DOMContentLoaded', async function() {
       !window.location.pathname.endsWith('/')) {
     if (!(await requireAuth())) return;
     displayUserInfo();
+    const storedMbti = loadFoodMBTI();
+    if (storedMbti) {
+      void saveFoodMBTIToServer(storedMbti, { silent: true });
+    }
     checkExpiringItems();
     activateCurrentNav();
     loadLevelData();
@@ -1255,7 +1370,9 @@ window.app = {
   getExpToNextLevel,
   addExp,
   updateLevelDisplay,
+  loadMemberProfile,
   saveFoodMBTI,
+  saveFoodMBTIToServer,
   loadFoodMBTI,
   mbtiResults,
   storage,
