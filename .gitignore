@@ -1,2 +1,3 @@
 backend/config/config.json
+backend/config/keys.local.json
 build/

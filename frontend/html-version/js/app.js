@@ -34,11 +34,12 @@ async function postJson(path, body) {
 }
 
 function buildMemberHeader() {
-  if (!state.user || !state.user.memberId) {
+  const memberId = state.user?.memberId ?? storage.get('user')?.memberId;
+  if (!memberId) {
     return {};
   }
 
-  return { 'X-Member-Id': String(state.user.memberId) };
+  return { 'X-Member-Id': String(memberId) };
 }
 
 // 로컬 스토리지 유틸리티
@@ -376,37 +377,200 @@ function changePassword() {
   confirmPasswordInput.value = '';
 }
 
-function loadIngredients() {
-  const ingredients = storage.get('ingredients') || [];
-  state.ingredients = ingredients;
-  return ingredients;
-}
+function normalizeIngredientForClient(ingredient) {
+  if (!ingredient) {
+    return null;
+  }
 
-function saveIngredients(ingredients) {
-  storage.set('ingredients', ingredients);
-  state.ingredients = ingredients;
-}
-
-function addIngredient(ingredient) {
-  const newIngredient = {
-    id: Date.now().toString(),
+  const normalized = {
     ...ingredient
   };
 
-  const ingredients = loadIngredients();
-  ingredients.push(newIngredient);
+  if (!normalized.id && normalized.ingredientId !== undefined) {
+    normalized.id = String(normalized.ingredientId);
+  }
+
+  if (normalized.ingredientId === undefined && normalized.id) {
+    const parsedId = Number(normalized.id);
+    if (!Number.isNaN(parsedId)) {
+      normalized.ingredientId = parsedId;
+    }
+  }
+
+  if (!normalized.storage) {
+    normalized.storage = 'other';
+  }
+
+  return normalized;
+}
+
+function saveIngredients(ingredients) {
+  const safeIngredients = Array.isArray(ingredients) ? ingredients : [];
+  storage.set('ingredients', safeIngredients);
+  state.ingredients = safeIngredients;
+}
+
+function getCachedIngredients() {
+  if (Array.isArray(state.ingredients) && state.ingredients.length > 0) {
+    return state.ingredients;
+  }
+
+  const cached = storage.get('ingredients') || [];
+  state.ingredients = cached;
+  return cached;
+}
+
+async function loadIngredients() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/ingredients`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: buildMemberHeader()
+    });
+
+    const body = await parseJsonSafe(response);
+    if (!response.ok || !body || body.ok === false) {
+      throw new Error(body?.message || 'Failed to load ingredients.');
+    }
+
+    const ingredients = (body.ingredients || [])
+      .map(normalizeIngredientForClient)
+      .filter(Boolean);
+
+    saveIngredients(ingredients);
+    return ingredients;
+  } catch (_error) {
+    return getCachedIngredients();
+  }
+}
+
+function buildIngredientPayload(ingredient) {
+  return {
+    name: ingredient.name,
+    category: ingredient.category,
+    quantity: ingredient.quantity,
+    unit: ingredient.unit,
+    storage: ingredient.storage,
+    expiryDate: ingredient.expiryDate,
+    publicFoodCode: ingredient.publicFoodCode || undefined,
+    nutritionBasisAmount: ingredient.nutritionBasisAmount || undefined,
+    energyKcal: ingredient.energyKcal ?? undefined,
+    proteinG: ingredient.proteinG ?? undefined,
+    fatG: ingredient.fatG ?? undefined,
+    carbohydrateG: ingredient.carbohydrateG ?? undefined,
+    sugarG: ingredient.sugarG ?? undefined,
+    sodiumMg: ingredient.sodiumMg ?? undefined,
+    sourceName: ingredient.sourceName || undefined,
+    manufacturerName: ingredient.manufacturerName || undefined,
+    importYn: ingredient.importYn || undefined,
+    originCountryName: ingredient.originCountryName || undefined,
+    dataBaseDate: ingredient.dataBaseDate || undefined
+  };
+}
+
+async function addIngredient(ingredient) {
+  const payload = buildIngredientPayload(ingredient);
+
+  const response = await fetch(`${API_BASE_URL}/api/ingredients`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...buildMemberHeader()
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const body = await parseJsonSafe(response);
+  if (!response.ok || !body || body.ok === false) {
+    throw new Error(body?.message || 'Failed to create ingredient.');
+  }
+
+  const created = normalizeIngredientForClient(body.ingredient);
+  if (!created) {
+    throw new Error('Invalid ingredient response.');
+  }
+  const ingredients = getCachedIngredients().slice();
+  ingredients.push(created);
   saveIngredients(ingredients);
 
   void addExp('INGREDIENT_ADD', '식재료 추가');
-
-  return newIngredient;
+  return created;
 }
 
-function deleteIngredient(id) {
-  const ingredients = loadIngredients();
-  const filtered = ingredients.filter(item => item.id !== id);
-  saveIngredients(filtered);
+async function updateIngredient(ingredientId, ingredient) {
+  const payload = buildIngredientPayload(ingredient);
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/ingredients?ingredientId=${encodeURIComponent(ingredientId)}`,
+    {
+      method: 'PUT',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...buildMemberHeader()
+      },
+      body: JSON.stringify(payload)
+    }
+  );
+
+  const body = await parseJsonSafe(response);
+  if (!response.ok || !body || body.ok === false) {
+    throw new Error(body?.message || 'Failed to update ingredient.');
+  }
+
+  const updated = normalizeIngredientForClient(body.ingredient);
+  if (!updated) {
+    throw new Error('Invalid ingredient response.');
+  }
+  const ingredients = getCachedIngredients().map(item =>
+    String(item.id) === String(updated.id) ? updated : item
+  );
+  saveIngredients(ingredients);
+  return updated;
+}
+
+async function deleteIngredient(id) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/ingredients?ingredientId=${encodeURIComponent(id)}`,
+    {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: buildMemberHeader()
+    }
+  );
+
+  const body = await parseJsonSafe(response);
+  if (!response.ok || !body || body.ok === false) {
+    throw new Error(body?.message || 'Failed to delete ingredient.');
+  }
+
+  const ingredients = getCachedIngredients().filter(item => String(item.id) !== String(id));
+  saveIngredients(ingredients);
   showToast('재료가 삭제되었습니다.', 'success');
+  return true;
+}
+
+async function searchProcessedFoods(keyword) {
+  const normalizedKeyword = String(keyword || '').trim();
+  if (!normalizedKeyword) {
+    return [];
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/nutrition/processed-foods?keyword=${encodeURIComponent(normalizedKeyword)}`,
+    {
+      method: 'GET',
+      credentials: 'include'
+    }
+  );
+
+  const body = await parseJsonSafe(response);
+  if (!response.ok || !body || body.ok === false) {
+    throw new Error(body?.message || 'Failed to search foods.');
+  }
+
+  return body.foods || [];
 }
 
 function getDaysUntilExpiry(expiryDate) {
@@ -444,7 +608,7 @@ function getExpiryText(expiryDate) {
 }
 
 function checkExpiringItems() {
-  const ingredients = loadIngredients();
+  const ingredients = getCachedIngredients();
   const today = new Date();
   const threeDaysLater = new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000);
 
@@ -561,7 +725,7 @@ function getTimeAgo(dateString) {
 }
 
 function recommendRecipes(selectedIngredientIds) {
-  const ingredients = loadIngredients();
+  const ingredients = getCachedIngredients();
   const selectedItems = ingredients.filter(item =>
     selectedIngredientIds.includes(item.id)
   );
@@ -872,7 +1036,9 @@ window.app = {
   changePassword,
   loadIngredients,
   addIngredient,
+  updateIngredient,
   deleteIngredient,
+  searchProcessedFoods,
   getDaysUntilExpiry,
   getExpiryBadgeClass,
   getExpiryText,

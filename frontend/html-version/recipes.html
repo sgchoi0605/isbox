@@ -172,8 +172,8 @@
   <script>
     let selectedIngredients = [];
 
-    function renderIngredientSelection() {
-      const ingredients = app.loadIngredients();
+    async function renderIngredientSelection() {
+      const ingredients = await app.loadIngredients();
       const container = document.getElementById('ingredientSelection');
 
       if (ingredients.length === 0) {
@@ -209,8 +209,8 @@
       }
     }
 
-    function selectAllIngredients() {
-      const ingredients = app.loadIngredients();
+    async function selectAllIngredients() {
+      const ingredients = await app.loadIngredients();
       selectedIngredients = ingredients.map(i => i.id);
       document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = true);
     }
@@ -317,8 +317,8 @@
       }
     }
 
-    document.addEventListener('DOMContentLoaded', function() {
-      renderIngredientSelection();
+    document.addEventListener('DOMContentLoaded', async function() {
+      await renderIngredientSelection();
       renderNotifications();
     });
 

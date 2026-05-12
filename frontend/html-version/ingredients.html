@@ -119,7 +119,7 @@
         <h2 class="section-title">내 냉장고</h2>
         <p class="section-subtitle">냉장고에 보관된 재료를 관리하세요</p>
       </div>
-      <button class="btn btn-primary shadow-md" onclick="app.openModal('addIngredientModal')">
+      <button class="btn btn-primary shadow-md" onclick="openAddIngredientModal()">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="12" y1="5" x2="12" y2="19"/>
           <line x1="5" y1="12" x2="19" y2="12"/>
@@ -135,11 +135,20 @@
   <div id="addIngredientModal" class="modal">
     <div class="modal-content">
       <div class="modal-header">
-        <h3 class="modal-title">새 재료 추가</h3>
-        <button class="modal-close" onclick="app.closeModal('addIngredientModal')">&times;</button>
+        <h3 id="ingredientModalTitle" class="modal-title">새 재료 추가</h3>
+        <button class="modal-close" onclick="closeIngredientModal()">&times;</button>
       </div>
       
       <form id="addIngredientForm" onsubmit="handleAddIngredient(event)">
+        <div id="publicFoodSearchGroup" class="form-group">
+          <label class="form-label" for="foodSearchKeyword">가공식품 영양정보 검색</label>
+          <div class="flex gap-2">
+            <input type="text" id="foodSearchKeyword" class="form-input" placeholder="예: 참치, 햄, 과자">
+            <button type="button" class="btn btn-outline" onclick="handleSearchFood()">검색</button>
+          </div>
+          <div id="foodSearchResults" class="mt-2"></div>
+          <div id="selectedFoodSummary" class="text-sm text-gray-500 mt-2"></div>
+        </div>
         <div class="form-group">
           <label class="form-label" for="name">재료명*</label>
           <input type="text" id="name" class="form-input" placeholder="예: 양파" required>
@@ -183,9 +192,10 @@
           <label class="form-label" for="storage">보관 위치*</label>
           <select id="storage" class="form-select" required>
             <option value="">보관 위치 선택</option>
-            <option value="냉장실">냉장실</option>
-            <option value="냉동실">냉동실</option>
-            <option value="실온">실온</option>
+            <option value="fridge">냉장실</option>
+            <option value="freezer">냉동실</option>
+            <option value="roomTemp">실온</option>
+            <option value="other">기타</option>
           </select>
         </div>
 
@@ -195,8 +205,8 @@
         </div>
 
         <div class="modal-footer">
-          <button type="button" class="btn btn-outline" onclick="app.closeModal('addIngredientModal')">취소</button>
-          <button type="submit" class="btn btn-primary">추가</button>
+          <button type="button" class="btn btn-outline" onclick="closeIngredientModal()">취소</button>
+          <button id="ingredientSubmitButton" type="submit" class="btn btn-primary">추가</button>
         </div>
       </form>
     </div>
@@ -221,11 +231,227 @@
 
   <script src="js/app.js"></script>
   <script>
-    function renderIngredients() {
-      const ingredients = app.loadIngredients();
-      const container = document.getElementById('ingredientsContainer');
+    const STORAGE_ORDER = ['fridge', 'freezer', 'roomTemp', 'other'];
+    const STORAGE_LABELS = {
+      fridge: '냉장실',
+      freezer: '냉동실',
+      roomTemp: '실온',
+      other: '기타'
+    };
 
-      if (ingredients.length === 0) {
+    let ingredientListCache = [];
+    let editingIngredientId = null;
+    let foodSearchResults = [];
+    let selectedFoodSnapshot = null;
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    function normalizeStorage(value) {
+      const raw = String(value ?? '').trim();
+      const lower = raw.toLowerCase();
+
+      if (lower === 'fridge' || raw === '냉장실') return 'fridge';
+      if (lower === 'freezer' || raw === '냉동실') return 'freezer';
+      if (lower === 'roomtemp' || lower === 'room_temp' || raw === '실온') return 'roomTemp';
+      return 'other';
+    }
+
+    function getStorageLabel(value) {
+      return STORAGE_LABELS[normalizeStorage(value)] || '기타';
+    }
+
+    function clearFoodSearchUi() {
+      const keywordInput = document.getElementById('foodSearchKeyword');
+      const results = document.getElementById('foodSearchResults');
+      const summary = document.getElementById('selectedFoodSummary');
+
+      if (keywordInput) keywordInput.value = '';
+      if (results) results.innerHTML = '';
+      if (summary) summary.textContent = '';
+
+      foodSearchResults = [];
+      selectedFoodSnapshot = null;
+    }
+
+    function setIngredientModalMode(isEdit) {
+      const title = document.getElementById('ingredientModalTitle');
+      const submitButton = document.getElementById('ingredientSubmitButton');
+      const searchGroup = document.getElementById('publicFoodSearchGroup');
+
+      if (title) title.textContent = isEdit ? '재료 수정' : '새 재료 추가';
+      if (submitButton) submitButton.textContent = isEdit ? '저장' : '추가';
+      if (searchGroup) searchGroup.style.display = isEdit ? 'none' : '';
+    }
+
+    function openAddIngredientModal() {
+      editingIngredientId = null;
+      setIngredientModalMode(false);
+      clearFoodSearchUi();
+
+      const form = document.getElementById('addIngredientForm');
+      if (form) form.reset();
+
+      app.openModal('addIngredientModal');
+    }
+
+    function closeIngredientModal() {
+      editingIngredientId = null;
+      setIngredientModalMode(false);
+      clearFoodSearchUi();
+
+      const form = document.getElementById('addIngredientForm');
+      if (form) form.reset();
+
+      app.closeModal('addIngredientModal');
+    }
+
+    function toNumberOrUndefined(value) {
+      if (value === null || value === undefined || value === '') {
+        return undefined;
+      }
+      const numberValue = Number(value);
+      return Number.isNaN(numberValue) ? undefined : numberValue;
+    }
+
+    function renderFoodSearchItems(items) {
+      const results = document.getElementById('foodSearchResults');
+      if (!results) return;
+
+      if (!items.length) {
+        results.innerHTML = '<p class="text-sm text-gray-500 mt-2">검색 결과가 없습니다.</p>';
+        return;
+      }
+
+      results.innerHTML = items.map((item, index) => `
+        <div class="p-3 mt-2 rounded-lg border border-gray-200">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <p class="font-medium text-gray-900">${escapeHtml(item.foodName)}</p>
+              <p class="text-xs text-gray-500">${escapeHtml(item.foodGroupName || '-')}</p>
+              <p class="text-xs text-gray-500 mt-1">
+                기준: ${escapeHtml(item.nutritionBasisAmount || '-')} /
+                열량: ${escapeHtml(item.energyKcal ?? '-')} kcal
+              </p>
+            </div>
+            <button type="button" class="btn btn-outline" onclick="selectFoodResult(${index})">선택</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function handleSearchFood() {
+      const keywordInput = document.getElementById('foodSearchKeyword');
+      const results = document.getElementById('foodSearchResults');
+      if (!keywordInput || !results) return;
+
+      const keyword = keywordInput.value.trim();
+      if (!keyword) {
+        results.innerHTML = '<p class="text-sm text-gray-500 mt-2">검색어를 입력해주세요.</p>';
+        return;
+      }
+
+      results.innerHTML = '<p class="text-sm text-gray-500 mt-2">검색 중...</p>';
+
+      try {
+        const foods = await app.searchProcessedFoods(keyword);
+        foodSearchResults = Array.isArray(foods) ? foods : [];
+        renderFoodSearchItems(foodSearchResults);
+      } catch (error) {
+        results.innerHTML = '<p class="text-sm text-red-500 mt-2">검색에 실패했습니다.</p>';
+        app.showToast(error.message || '검색에 실패했습니다.', 'error');
+      }
+    }
+
+    function selectFoodResult(index) {
+      const food = foodSearchResults[index];
+      if (!food) return;
+
+      selectedFoodSnapshot = {
+        publicFoodCode: food.foodCode || undefined,
+        nutritionBasisAmount: food.nutritionBasisAmount || undefined,
+        energyKcal: toNumberOrUndefined(food.energyKcal),
+        proteinG: toNumberOrUndefined(food.proteinG),
+        fatG: toNumberOrUndefined(food.fatG),
+        carbohydrateG: toNumberOrUndefined(food.carbohydrateG),
+        sugarG: toNumberOrUndefined(food.sugarG),
+        sodiumMg: toNumberOrUndefined(food.sodiumMg),
+        sourceName: food.sourceName || undefined,
+        manufacturerName: food.manufacturerName || undefined,
+        importYn: food.importYn || undefined,
+        originCountryName: food.originCountryName || undefined,
+        dataBaseDate: food.dataBaseDate || undefined
+      };
+
+      const nameInput = document.getElementById('name');
+      const categoryInput = document.getElementById('category');
+      const summary = document.getElementById('selectedFoodSummary');
+
+      if (nameInput) nameInput.value = food.foodName || '';
+      if (categoryInput && !categoryInput.value) categoryInput.value = '기타';
+      if (summary) {
+        summary.textContent = `선택됨: ${food.foodName || '-'} (${food.foodCode || '-'})`;
+      }
+    }
+
+    function openEditIngredientModal(id) {
+      const target = ingredientListCache.find(item => String(item.id) === String(id));
+      if (!target) {
+        app.showToast('수정할 재료를 찾지 못했습니다.', 'error');
+        return;
+      }
+
+      editingIngredientId = String(target.id);
+      setIngredientModalMode(true);
+      clearFoodSearchUi();
+
+      document.getElementById('name').value = target.name || '';
+      document.getElementById('category').value = target.category || '';
+      document.getElementById('quantity').value = target.quantity || '';
+      document.getElementById('unit').value = target.unit || '';
+      document.getElementById('storage').value = normalizeStorage(target.storage);
+      document.getElementById('expiryDate').value = target.expiryDate || '';
+
+      app.openModal('addIngredientModal');
+    }
+
+    async function renderIngredients() {
+      const container = document.getElementById('ingredientsContainer');
+      if (!container) return;
+
+      container.innerHTML = `
+        <div class="card shadow-md">
+          <div class="card-content">
+            <p class="text-sm text-gray-500">재료 목록을 불러오는 중...</p>
+          </div>
+        </div>
+      `;
+
+      try {
+        const loaded = await app.loadIngredients();
+        const normalized = (Array.isArray(loaded) ? loaded : []).map(item => ({
+          ...item,
+          id: String(item.id ?? item.ingredientId ?? ''),
+          storage: normalizeStorage(item.storage)
+        }));
+
+        ingredientListCache = normalized.sort((a, b) => {
+          const aDate = new Date(a.expiryDate || '').getTime();
+          const bDate = new Date(b.expiryDate || '').getTime();
+          return aDate - bDate;
+        });
+      } catch (error) {
+        ingredientListCache = [];
+        app.showToast(error.message || '재료 목록 로딩에 실패했습니다.', 'error');
+      }
+
+      if (!ingredientListCache.length) {
         container.innerHTML = `
           <div class="card shadow-md">
             <div class="card-content empty-state">
@@ -238,110 +464,137 @@
         return;
       }
 
-      // 보관 위치별로 그룹화
-      const grouped = ingredients.reduce((acc, item) => {
-        const storage = item.storage || '기타';
-        if (!acc[storage]) acc[storage] = [];
-        acc[storage].push(item);
-        return acc;
-      }, {});
+      const grouped = { fridge: [], freezer: [], roomTemp: [], other: [] };
+      ingredientListCache.forEach(item => {
+        grouped[normalizeStorage(item.storage)].push(item);
+      });
 
-      container.innerHTML = Object.entries(grouped).map(([storage, items]) => `
-        <div class="card shadow-md storage-section mb-6">
-          <div class="card-header storage-header">
-            <h3 class="card-title">
-              ${storage}
-              <span class="badge badge-outline ml-2">${items.length}개</span>
-            </h3>
-          </div>
-          <div class="card-content">
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              ${items.map(item => `
-                <div class="ingredient-item">
-                  <div class="flex items-start justify-between mb-2">
-                    <div>
-                      <h4 class="font-medium text-gray-900">${item.name}</h4>
-                      <p class="text-sm text-gray-500">${item.category}</p>
+      container.innerHTML = STORAGE_ORDER
+        .filter(storageKey => grouped[storageKey].length > 0)
+        .map(storageKey => `
+          <div class="card shadow-md storage-section mb-6">
+            <div class="card-header storage-header">
+              <h3 class="card-title">
+                ${getStorageLabel(storageKey)}
+                <span class="badge badge-outline ml-2">${grouped[storageKey].length}개</span>
+              </h3>
+            </div>
+            <div class="card-content">
+              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                ${grouped[storageKey].map(item => `
+                  <div class="ingredient-item">
+                    <div class="flex items-start justify-between mb-2">
+                      <div>
+                        <h4 class="font-medium text-gray-900">${escapeHtml(item.name)}</h4>
+                        <p class="text-sm text-gray-500">${escapeHtml(item.category)}</p>
+                      </div>
+                      <div class="flex items-center gap-1">
+                        <button class="btn btn-icon" style="padding: 0.25rem; width: 2rem; height: 2rem; background: transparent; border: none;" onclick="openEditIngredientModal('${item.id}')">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2">
+                            <path d="M12 20h9"/>
+                            <path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+                          </svg>
+                        </button>
+                        <button class="btn btn-icon" style="padding: 0.25rem; width: 2rem; height: 2rem; background: transparent; border: none;" onclick="handleDeleteIngredient('${item.id}')">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                          </svg>
+                        </button>
+                      </div>
                     </div>
-                    <button class="btn btn-icon" style="padding: 0.25rem; width: 2rem; height: 2rem; background: transparent; border: none;" onclick="handleDeleteIngredient('${item.id}')">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2">
-                        <polyline points="3 6 5 6 21 6"/>
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                      </svg>
-                    </button>
-                  </div>
-                  
-                  <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                    <p class="text-sm font-medium text-gray-700">
-                      수량: ${item.quantity}${item.unit}
-                    </p>
-                    <div class="flex items-center gap-2 text-gray-600">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2">
-                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                        <line x1="16" y1="2" x2="16" y2="6"/>
-                        <line x1="8" y1="2" x2="8" y2="6"/>
-                        <line x1="3" y1="10" x2="21" y2="10"/>
-                      </svg>
-                      <span class="text-sm">${app.formatDate(item.expiryDate)}</span>
+
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                      <p class="text-sm font-medium text-gray-700">수량: ${escapeHtml(item.quantity)}${escapeHtml(item.unit)}</p>
+                      <div class="flex items-center gap-2 text-gray-600">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2">
+                          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                          <line x1="16" y1="2" x2="16" y2="6"/>
+                          <line x1="8" y1="2" x2="8" y2="6"/>
+                          <line x1="3" y1="10" x2="21" y2="10"/>
+                        </svg>
+                        <span class="text-sm">${escapeHtml(app.formatDate(item.expiryDate))}</span>
+                      </div>
+                      <span class="badge ${app.getExpiryBadgeClass(item.expiryDate)}">${escapeHtml(app.getExpiryText(item.expiryDate))}</span>
+                      ${item.publicFoodCode ? '<span class="badge badge-outline">공공데이터 연동</span>' : ''}
                     </div>
-                    <span class="badge ${app.getExpiryBadgeClass(item.expiryDate)}">${app.getExpiryText(item.expiryDate)}</span>
                   </div>
-                </div>
-              `).join('')}
+                `).join('')}
+              </div>
             </div>
           </div>
-        </div>
-      `).join('');
+        `).join('');
     }
 
-    function handleAddIngredient(event) {
+    async function handleAddIngredient(event) {
       event.preventDefault();
 
-      const ingredient = {
-        name: document.getElementById('name').value,
+      const payload = {
+        name: document.getElementById('name').value.trim(),
         category: document.getElementById('category').value,
-        quantity: document.getElementById('quantity').value,
+        quantity: document.getElementById('quantity').value.trim(),
         unit: document.getElementById('unit').value,
         storage: document.getElementById('storage').value,
         expiryDate: document.getElementById('expiryDate').value
       };
 
-      app.addIngredient(ingredient);
-      app.closeModal('addIngredientModal');
-      document.getElementById('addIngredientForm').reset();
-      renderIngredients();
-      app.checkExpiringItems();
-    }
+      if (!editingIngredientId && selectedFoodSnapshot) {
+        Object.assign(payload, selectedFoodSnapshot);
+      }
 
-    function handleDeleteIngredient(id) {
-      if (confirm('이 재료를 삭제하시겠습니까?')) {
-        app.deleteIngredient(id);
-        renderIngredients();
-        app.checkExpiringItems();
+      try {
+        if (editingIngredientId) {
+          await app.updateIngredient(editingIngredientId, payload);
+          app.showToast('재료가 수정되었습니다.', 'success');
+        } else {
+          await app.addIngredient(payload);
+          app.showToast('재료가 추가되었습니다.', 'success');
+        }
+
+        closeIngredientModal();
+        await renderIngredients();
+        renderNotifications();
+      } catch (error) {
+        app.showToast(error.message || '재료 저장에 실패했습니다.', 'error');
       }
     }
 
-    // 알림 표시
+    async function handleDeleteIngredient(id) {
+      if (!confirm('이 재료를 삭제하시겠습니까?')) {
+        return;
+      }
+
+      try {
+        await app.deleteIngredient(id);
+        await renderIngredients();
+        renderNotifications();
+      } catch (error) {
+        app.showToast(error.message || '재료 삭제에 실패했습니다.', 'error');
+      }
+    }
+
     function renderNotifications() {
       const expiring = app.checkExpiringItems();
       const notificationList = document.getElementById('notificationList');
-      
+      if (!notificationList) return;
+
       if (expiring.length === 0) {
         notificationList.innerHTML = '<p class="text-sm text-gray-500">유통기한 임박 재료가 없습니다.</p>';
-      } else {
-        notificationList.innerHTML = expiring.map(item => `
-          <div class="p-3 mb-2 rounded-lg" style="background: #fee2e2;">
-            <p class="text-sm font-medium">${item.name}</p>
-            <p class="text-xs" style="color: #991b1b;">
-              유통기한: ${app.formatDate(item.expiryDate)}
-            </p>
-          </div>
-        `).join('');
+        return;
       }
+
+      notificationList.innerHTML = expiring.map(item => `
+        <div class="p-3 mb-2 rounded-lg" style="background: #fee2e2;">
+          <p class="text-sm font-medium">${escapeHtml(item.name)}</p>
+          <p class="text-xs" style="color: #991b1b;">
+            ${getStorageLabel(item.storage)} · 유통기한: ${escapeHtml(app.formatDate(item.expiryDate))}
+          </p>
+        </div>
+      `).join('');
     }
 
-    document.addEventListener('DOMContentLoaded', function() {
-      renderIngredients();
+    document.addEventListener('DOMContentLoaded', async function() {
+      await renderIngredients();
       renderNotifications();
     });
 

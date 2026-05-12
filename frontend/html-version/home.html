@@ -345,7 +345,7 @@
   <script src="js/app.js"></script>
   <script>
     // 캘린더 렌더링
-    function renderCalendar() {
+    async function renderCalendar() {
       const calendar = document.getElementById('calendar');
       const today = new Date();
       const currentYear = today.getFullYear();
@@ -359,7 +359,7 @@
       const monthNames = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
 
       // 재료의 유통기한 날짜 가져오기
-      const ingredients = app.loadIngredients();
+      const ingredients = await app.loadIngredients();
       const expiryDates = ingredients.map(item => {
         const date = new Date(item.expiryDate);
         return date.getDate();
@@ -408,7 +408,7 @@
 
     // 페이지별 초기화
     async function initHomePage() {
-      const ingredients = app.loadIngredients();
+      const ingredients = await app.loadIngredients();
       const posts = await app.loadCommunityPosts();
       const expiring = app.checkExpiringItems();
       const { level, exp } = app.loadLevelData();
@@ -424,7 +424,7 @@
       document.getElementById('communityPosts').textContent = posts.length + '개';
 
       // 캘린더 렌더링
-      renderCalendar();
+      await renderCalendar();
 
       // 알림 목록 표시
       const notificationList = document.getElementById('notificationList');
