@@ -51,6 +51,20 @@ void MemberController::registerHandlers()
         },
         {drogon::Get});
 
+    app.registerHandler(
+        "/api/members/profile",
+        [this](const drogon::HttpRequestPtr &request, Callback &&callback) {
+            handleUpdateProfile(request, std::move(callback));
+        },
+        {drogon::Put});
+
+    app.registerHandler(
+        "/api/members/password",
+        [this](const drogon::HttpRequestPtr &request, Callback &&callback) {
+            handleChangePassword(request, std::move(callback));
+        },
+        {drogon::Put});
+
     // 프론트 활동 이벤트를 받아 서버에서 경험치/레벨을 계산해 반영한다.
     app.registerHandler(
         "/api/members/exp",
@@ -106,7 +120,7 @@ void MemberController::applyCors(const drogon::HttpRequestPtr &request,
 
     response->addHeader("Access-Control-Allow-Credentials", "true");
     response->addHeader("Access-Control-Allow-Headers", "Content-Type");
-    response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    response->addHeader("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
 }
 
 std::string MemberController::extractSessionToken(
@@ -236,6 +250,73 @@ void MemberController::handleMe(const drogon::HttpRequestPtr &request,
 
     auto response = drogon::HttpResponse::newHttpJsonResponse(body);
     response->setStatusCode(drogon::k200OK);
+    applyCors(request, response);
+    callback(response);
+}
+
+void MemberController::handleUpdateProfile(const drogon::HttpRequestPtr &request,
+                                           Callback &&callback)
+{
+    const auto json = request->getJsonObject();
+    if (!json)
+    {
+        auto response =
+            drogon::HttpResponse::newHttpJsonResponse(makeErrorBody("Invalid JSON body."));
+        response->setStatusCode(drogon::k400BadRequest);
+        applyCors(request, response);
+        callback(response);
+        return;
+    }
+
+    UpdateProfileRequestDTO dto;
+    dto.name = json->get("name", "").asString();
+    dto.email = json->get("email", "").asString();
+
+    const auto sessionToken = extractSessionToken(request);
+    const auto result = service_.updateProfile(sessionToken, dto);
+
+    Json::Value body;
+    body["ok"] = result.ok;
+    body["message"] = result.message;
+    if (result.member.has_value())
+    {
+        body["member"] = buildMemberJson(*result.member);
+    }
+
+    auto response = drogon::HttpResponse::newHttpJsonResponse(body);
+    response->setStatusCode(static_cast<drogon::HttpStatusCode>(result.statusCode));
+    applyCors(request, response);
+    callback(response);
+}
+
+void MemberController::handleChangePassword(const drogon::HttpRequestPtr &request,
+                                            Callback &&callback)
+{
+    const auto json = request->getJsonObject();
+    if (!json)
+    {
+        auto response =
+            drogon::HttpResponse::newHttpJsonResponse(makeErrorBody("Invalid JSON body."));
+        response->setStatusCode(drogon::k400BadRequest);
+        applyCors(request, response);
+        callback(response);
+        return;
+    }
+
+    ChangePasswordRequestDTO dto;
+    dto.currentPassword = json->get("currentPassword", "").asString();
+    dto.newPassword = json->get("newPassword", "").asString();
+    dto.confirmPassword = json->get("confirmPassword", "").asString();
+
+    const auto sessionToken = extractSessionToken(request);
+    const auto result = service_.changePassword(sessionToken, dto);
+
+    Json::Value body;
+    body["ok"] = result.ok;
+    body["message"] = result.message;
+
+    auto response = drogon::HttpResponse::newHttpJsonResponse(body);
+    response->setStatusCode(static_cast<drogon::HttpStatusCode>(result.statusCode));
     applyCors(request, response);
     callback(response);
 }

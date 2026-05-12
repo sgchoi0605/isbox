@@ -40,6 +40,12 @@ class MemberController
     void handleLogin(const drogon::HttpRequestPtr &request, Callback &&callback);
     // GET /api/members/me 요청으로 현재 로그인 사용자를 확인한다.
     void handleMe(const drogon::HttpRequestPtr &request, Callback &&callback);
+    // PUT /api/members/profile 요청으로 현재 로그인 사용자의 기본 정보를 수정한다.
+    void handleUpdateProfile(const drogon::HttpRequestPtr &request,
+                             Callback &&callback);
+    // PUT /api/members/password 요청으로 현재 로그인 사용자의 비밀번호를 변경한다.
+    void handleChangePassword(const drogon::HttpRequestPtr &request,
+                              Callback &&callback);
     // POST /api/members/exp 요청으로 현재 로그인 사용자 경험치를 지급한다.
     void handleAwardExperience(const drogon::HttpRequestPtr &request,
                                Callback &&callback);

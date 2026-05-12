@@ -33,6 +33,20 @@ async function postJson(path, body) {
   return { response, data };
 }
 
+async function putJson(path, body) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+
+  const data = await parseJsonSafe(response);
+  return { response, data };
+}
+
 function buildMemberHeader() {
   const memberId = state.user?.memberId ?? storage.get('user')?.memberId;
   if (!memberId) {
@@ -314,7 +328,7 @@ function cancelProfileEdit() {
   }
 }
 
-function updateProfile() {
+async function updateProfile() {
   const nameInput = document.getElementById('profileName');
   const emailInput = document.getElementById('profileEmail');
 
@@ -328,22 +342,27 @@ function updateProfile() {
     return;
   }
 
-  const updatedUser = {
-    ...state.user,
-    name: name,
-    email: email,
-    loggedIn: true
-  };
+  try {
+    const { response, data } = await putJson('/api/members/profile', {
+      name,
+      email
+    });
 
-  storage.set('user', updatedUser);
-  state.user = updatedUser;
-  showToast('프로필이 업데이트되었습니다.', 'success');
+    if (!response.ok || !data || data.ok === false || !data.member) {
+      throw new Error(data?.message || '프로필 업데이트에 실패했습니다.');
+    }
 
-  toggleProfileEdit();
-  displayUserInfo();
+    setAuthenticatedUser(data.member);
+    showToast('프로필이 업데이트되었습니다.', 'success');
+
+    toggleProfileEdit();
+    displayUserInfo();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
 }
 
-function changePassword() {
+async function changePassword() {
   const currentPasswordInput = document.getElementById('currentPassword');
   const newPasswordInput = document.getElementById('newPassword');
   const confirmPasswordInput = document.getElementById('confirmPassword');
@@ -369,12 +388,25 @@ function changePassword() {
     return;
   }
 
-  // Mock password change
-  showToast('비밀번호가 변경되었습니다.', 'success');
+  try {
+    const { response, data } = await putJson('/api/members/password', {
+      currentPassword,
+      newPassword,
+      confirmPassword
+    });
 
-  currentPasswordInput.value = '';
-  newPasswordInput.value = '';
-  confirmPasswordInput.value = '';
+    if (!response.ok || !data || data.ok === false) {
+      throw new Error(data?.message || '비밀번호 변경에 실패했습니다.');
+    }
+
+    showToast('비밀번호가 변경되었습니다.', 'success');
+
+    currentPasswordInput.value = '';
+    newPasswordInput.value = '';
+    confirmPasswordInput.value = '';
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
 }
 
 function normalizeIngredientForClient(ingredient) {
@@ -1065,6 +1097,3 @@ window.app = {
   storage,
   state
 };
-
-
-

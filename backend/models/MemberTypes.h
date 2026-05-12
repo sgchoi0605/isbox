@@ -26,6 +26,21 @@ class SignupRequestDTO
     bool agreeTerms{false};
 };
 
+class UpdateProfileRequestDTO
+{
+  public:
+    std::string name;
+    std::string email;
+};
+
+class ChangePasswordRequestDTO
+{
+  public:
+    std::string currentPassword;
+    std::string newPassword;
+    std::string confirmPassword;
+};
+
 // members 테이블 한 행을 그대로 담는 내부 모델.
 // passwordHash가 포함되므로 외부 응답으로 직접 노출하면 안 된다.
 class MemberModel
@@ -66,6 +81,23 @@ class AuthResultDTO
     std::string message;
     std::optional<MemberDTO> member;
     std::optional<std::string> sessionToken;
+};
+
+class UpdateProfileResultDTO
+{
+  public:
+    bool ok{false};
+    int statusCode{400};
+    std::string message;
+    std::optional<MemberDTO> member;
+};
+
+class ChangePasswordResultDTO
+{
+  public:
+    bool ok{false};
+    int statusCode{400};
+    std::string message;
 };
 
 // 경험치 지급 요청 DTO.

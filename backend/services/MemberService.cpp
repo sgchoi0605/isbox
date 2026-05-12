@@ -252,6 +252,171 @@ std::optional<MemberDTO> MemberService::getCurrentMember(
     }
 }
 
+UpdateProfileResultDTO MemberService::updateProfile(
+    const std::string &sessionToken,
+    const UpdateProfileRequestDTO &request)
+{
+    UpdateProfileResultDTO result;
+
+    const auto name = trim(request.name);
+    const auto email = toLower(trim(request.email));
+
+    if (name.empty() || email.empty())
+    {
+        result.statusCode = 400;
+        result.message = "Please fill in all required fields.";
+        return result;
+    }
+
+    if (!isValidEmail(email))
+    {
+        result.statusCode = 400;
+        result.message = "Invalid email format.";
+        return result;
+    }
+
+    try
+    {
+        const auto memberId = resolveSessionMemberId(sessionToken);
+        if (!memberId.has_value())
+        {
+            result.statusCode = 401;
+            result.message = "Unauthorized.";
+            return result;
+        }
+
+        const auto currentMember = mapper_.findById(*memberId);
+        if (!currentMember.has_value() || currentMember->status != "ACTIVE")
+        {
+            result.statusCode = 401;
+            result.message = "Unauthorized.";
+            return result;
+        }
+
+        const auto memberWithSameEmail = mapper_.findByEmail(email);
+        if (memberWithSameEmail.has_value() &&
+            memberWithSameEmail->memberId != *memberId)
+        {
+            result.statusCode = 409;
+            result.message = "Email is already registered.";
+            return result;
+        }
+
+        mapper_.updateProfile(*memberId, email, name);
+        const auto updatedMember = mapper_.findById(*memberId);
+        if (!updatedMember.has_value())
+        {
+            result.statusCode = 500;
+            result.message = "Failed to load member.";
+            return result;
+        }
+
+        result.ok = true;
+        result.statusCode = 200;
+        result.message = "Profile updated.";
+        result.member = mapper_.toMemberDTO(*updatedMember);
+        return result;
+    }
+    catch (const drogon::orm::DrogonDbException &e)
+    {
+        LOG_ERROR << "update profile db error: " << e.base().what();
+        if (looksLikeDuplicateEmail(e.base().what()))
+        {
+            result.statusCode = 409;
+            result.message = "Email is already registered.";
+            return result;
+        }
+
+        result.statusCode = 500;
+        result.message = "Database error while updating profile.";
+        return result;
+    }
+    catch (const std::exception &)
+    {
+        result.statusCode = 500;
+        result.message = "Server error while updating profile.";
+        return result;
+    }
+}
+
+ChangePasswordResultDTO MemberService::changePassword(
+    const std::string &sessionToken,
+    const ChangePasswordRequestDTO &request)
+{
+    ChangePasswordResultDTO result;
+
+    const auto currentPassword = request.currentPassword;
+    const auto newPassword = request.newPassword;
+    const auto confirmPassword = request.confirmPassword;
+
+    if (currentPassword.empty() || newPassword.empty() || confirmPassword.empty())
+    {
+        result.statusCode = 400;
+        result.message = "Please fill in all required fields.";
+        return result;
+    }
+
+    if (newPassword.size() < 8U)
+    {
+        result.statusCode = 400;
+        result.message = "Password must be at least 8 characters.";
+        return result;
+    }
+
+    if (newPassword != confirmPassword)
+    {
+        result.statusCode = 400;
+        result.message = "Passwords do not match.";
+        return result;
+    }
+
+    if (currentPassword == newPassword)
+    {
+        result.statusCode = 400;
+        result.message = "New password must be different.";
+        return result;
+    }
+
+    try
+    {
+        const auto memberId = resolveSessionMemberId(sessionToken);
+        if (!memberId.has_value())
+        {
+            result.statusCode = 401;
+            result.message = "Unauthorized.";
+            return result;
+        }
+
+        const auto member = mapper_.findById(*memberId);
+        if (!member.has_value() || member->status != "ACTIVE")
+        {
+            result.statusCode = 401;
+            result.message = "Unauthorized.";
+            return result;
+        }
+
+        if (!verifyPassword(currentPassword, member->passwordHash))
+        {
+            result.statusCode = 401;
+            result.message = "Current password is incorrect.";
+            return result;
+        }
+
+        mapper_.updatePasswordHash(*memberId, hashPasswordWithSalt(newPassword));
+
+        result.ok = true;
+        result.statusCode = 200;
+        result.message = "Password updated.";
+        return result;
+    }
+    catch (const std::exception &)
+    {
+        result.statusCode = 500;
+        result.message = "Server error while updating password.";
+        return result;
+    }
+}
+
 bool MemberService::logout(const std::string &sessionToken)
 {
     if (sessionToken.empty())

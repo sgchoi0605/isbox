@@ -28,6 +28,13 @@ class MemberService
     // 세션 토큰을 해석해 활성 회원 정보를 반환한다.
     std::optional<MemberDTO> getCurrentMember(const std::string &sessionToken);
 
+    UpdateProfileResultDTO updateProfile(const std::string &sessionToken,
+                                         const UpdateProfileRequestDTO &request);
+
+    ChangePasswordResultDTO changePassword(
+        const std::string &sessionToken,
+        const ChangePasswordRequestDTO &request);
+
     // 세션 토큰을 무효화한다.
     bool logout(const std::string &sessionToken);
 

@@ -34,6 +34,13 @@ class MemberMapper
     // 로그인 성공 직후 호출된다.
     void updateLastLoginAt(std::uint64_t memberId) const;
 
+    void updateProfile(std::uint64_t memberId,
+                       const std::string &email,
+                       const std::string &name) const;
+
+    void updatePasswordHash(std::uint64_t memberId,
+                            const std::string &passwordHash) const;
+
     // 레벨/경험치를 DB에 반영한다.
     // 게임화 요소나 활동 보상 반영 시 사용한다.
     void updateLevelAndExp(std::uint64_t memberId,

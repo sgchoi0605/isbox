@@ -103,6 +103,28 @@ void MemberMapper::updateLastLoginAt(std::uint64_t memberId) const
         memberId);
 }
 
+void MemberMapper::updateProfile(std::uint64_t memberId,
+                                 const std::string &email,
+                                 const std::string &name) const
+{
+    const auto dbClient = drogon::app().getDbClient("default");
+    dbClient->execSqlSync(
+        "UPDATE members SET email = ?, name = ? WHERE member_id = ?",
+        email,
+        name,
+        memberId);
+}
+
+void MemberMapper::updatePasswordHash(std::uint64_t memberId,
+                                      const std::string &passwordHash) const
+{
+    const auto dbClient = drogon::app().getDbClient("default");
+    dbClient->execSqlSync(
+        "UPDATE members SET password_hash = ? WHERE member_id = ?",
+        passwordHash,
+        memberId);
+}
+
 void MemberMapper::updateLevelAndExp(std::uint64_t memberId,
                                      unsigned int level,
                                      unsigned int exp) const
