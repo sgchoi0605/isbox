@@ -1,6 +1,8 @@
 ﻿#include "MemberController.h"
 
+// 세션 쿠키 헤더 문자열 조립(std::ostringstream)을 위해 포함한다.
 #include <sstream>
+// std::move를 사용해 콜백 소유권을 전달하기 위해 포함한다.
 #include <utility>
 
 namespace
@@ -12,9 +14,13 @@ constexpr const char *kSessionCookieName = "isbox_session";
 // Controller 단계에서 바로 반환해야 하는 오류 응답의 공통 JSON 형태를 만든다.
 Json::Value makeErrorBody(const std::string &message)
 {
+    // 오류 응답용 JSON 객체를 생성한다.
     Json::Value body;
+    // 성공 여부를 명시적으로 false로 고정한다.
     body["ok"] = false;
+    // 호출자에게 전달할 오류 메시지를 설정한다.
     body["message"] = message;
+    // 완성된 오류 응답 본문을 반환한다.
     return body;
 }
 
@@ -25,6 +31,7 @@ namespace auth
 
 void MemberController::registerHandlers()
 {
+    // 전역 Drogon 앱 인스턴스를 참조한다.
     auto &app = drogon::app();
 
     // 회원가입은 JSON body를 받아 새 회원을 만들고 즉시 세션 쿠키를 발급한다.
@@ -51,6 +58,7 @@ void MemberController::registerHandlers()
         },
         {drogon::Get});
 
+    // 내 프로필 조회 엔드포인트를 GET /api/members/profile에 연결한다.
     app.registerHandler(
         "/api/members/profile",
         [this](const drogon::HttpRequestPtr &request, Callback &&callback) {
@@ -58,6 +66,8 @@ void MemberController::registerHandlers()
         },
         {drogon::Get});
 
+    // 다른 회원 프로필 조회 엔드포인트를 GET /api/members/{memberId}/profile에 연결한다.
+    // {1}은 첫 번째 경로 파라미터를 의미하며 문자열로 전달된다.
     app.registerHandler(
         "/api/members/{1}/profile",
         [this](const drogon::HttpRequestPtr &request,
@@ -67,6 +77,7 @@ void MemberController::registerHandlers()
         },
         {drogon::Get});
 
+    // 내 프로필 수정 엔드포인트를 PUT /api/members/profile에 연결한다.
     app.registerHandler(
         "/api/members/profile",
         [this](const drogon::HttpRequestPtr &request, Callback &&callback) {
@@ -74,6 +85,7 @@ void MemberController::registerHandlers()
         },
         {drogon::Put});
 
+    // Food MBTI 저장 엔드포인트를 PUT /api/members/me/food-mbti에 연결한다.
     app.registerHandler(
         "/api/members/me/food-mbti",
         [this](const drogon::HttpRequestPtr &request, Callback &&callback) {
@@ -81,6 +93,7 @@ void MemberController::registerHandlers()
         },
         {drogon::Put});
 
+    // 비밀번호 변경 엔드포인트를 PUT /api/members/password에 연결한다.
     app.registerHandler(
         "/api/members/password",
         [this](const drogon::HttpRequestPtr &request, Callback &&callback) {
@@ -127,38 +140,49 @@ Json::Value MemberController::buildMemberJson(const MemberDTO &member)
 
 Json::Value MemberController::buildFoodMbtiJson(const FoodMbtiDTO &foodMbti)
 {
+    // Food MBTI 정보를 담을 JSON 객체를 생성한다.
     Json::Value item;
+    // 단일 문자열 필드를 그대로 JSON에 매핑한다.
     item["type"] = foodMbti.type;
     item["title"] = foodMbti.title;
     item["description"] = foodMbti.description;
 
+    // traits 벡터를 JSON 배열로 변환한다.
     Json::Value traits(Json::arrayValue);
     for (const auto &trait : foodMbti.traits)
     {
+        // 각 특성 문자열을 배열의 끝에 추가한다.
         traits.append(trait);
     }
     item["traits"] = traits;
 
+    // 추천 음식 목록도 동일하게 JSON 배열로 변환한다.
     Json::Value recommendedFoods(Json::arrayValue);
     for (const auto &food : foodMbti.recommendedFoods)
     {
+        // 각 음식 문자열을 배열에 추가한다.
         recommendedFoods.append(food);
     }
     item["recommendedFoods"] = recommendedFoods;
 
+    // 검사 완료 시각을 응답에 포함한다.
     item["completedAt"] = foodMbti.completedAt;
+    // 직렬화된 결과 객체를 반환한다.
     return item;
 }
 
 Json::Value MemberController::buildProfileJson(const MemberProfileDTO &profile)
 {
+    // 프로필 응답 JSON 객체를 생성한다.
     Json::Value item;
+    // 기본 프로필 필드를 DTO에서 JSON으로 복사한다.
     item["memberId"] = static_cast<Json::UInt64>(profile.memberId);
     item["name"] = profile.name;
     item["email"] = profile.email;
     item["level"] = profile.level;
     item["exp"] = profile.exp;
     item["isMe"] = profile.isMe;
+    // Food MBTI 정보는 선택 값이므로 존재할 때만 객체로 채운다.
     if (profile.foodMbti.has_value())
     {
         item["foodMbti"] = buildFoodMbtiJson(*profile.foodMbti);
@@ -201,6 +225,7 @@ std::string MemberController::extractSessionToken(
 std::optional<std::uint64_t> MemberController::parseMemberId(
     const std::string &memberIdValue)
 {
+    // 경로에서 받은 memberId 문자열이 비어 있으면 유효하지 않은 값이다.
     if (memberIdValue.empty())
     {
         return std::nullopt;
@@ -208,13 +233,17 @@ std::optional<std::uint64_t> MemberController::parseMemberId(
 
     try
     {
+        // 숫자 문자열을 부호 없는 64비트 정수로 변환한다.
         const auto parsed = std::stoull(memberIdValue);
+        // 서비스에서 0은 유효한 회원 ID가 아니므로 실패로 처리한다.
         if (parsed == 0)
         {
             return std::nullopt;
         }
+        // 정상 파싱된 값을 반환한다.
         return parsed;
     }
+    // 숫자가 아니거나 범위를 벗어나면 파싱 실패로 처리한다.
     catch (const std::exception &)
     {
         return std::nullopt;
@@ -224,6 +253,7 @@ std::optional<std::uint64_t> MemberController::parseMemberId(
 std::string MemberController::buildSessionCookie(const std::string &token,
                                                  int maxAgeSeconds)
 {
+    // 쿠키 헤더 문자열을 단계적으로 조립하기 위해 스트림을 사용한다.
     std::ostringstream cookie;
     // HttpOnly로 JS 접근을 막고, SameSite=Lax로 일반 페이지 이동 흐름의 쿠키 전송은 유지한다.
     cookie << kSessionCookieName << '=' << token
@@ -348,19 +378,25 @@ void MemberController::handleMe(const drogon::HttpRequestPtr &request,
 void MemberController::handleGetMyProfile(const drogon::HttpRequestPtr &request,
                                           Callback &&callback)
 {
+    // 쿠키의 세션 토큰으로 현재 로그인 사용자의 프로필을 조회한다.
     const auto result = service_.getMyProfile(extractSessionToken(request));
 
+    // 서비스 결과를 공통 JSON 응답 형식으로 조립한다.
     Json::Value body;
     body["ok"] = result.ok;
     body["message"] = result.message;
     if (result.profile.has_value())
     {
+        // 프로필이 있으면 직렬화하여 profile 필드에 포함한다.
         body["profile"] = buildProfileJson(*result.profile);
     }
 
+    // 서비스 상태코드를 HTTP 응답 코드로 반영한다.
     auto response = drogon::HttpResponse::newHttpJsonResponse(body);
     response->setStatusCode(static_cast<drogon::HttpStatusCode>(result.statusCode));
+    // 브라우저에서 쿠키 인증 호출이 가능하도록 CORS 헤더를 적용한다.
     applyCors(request, response);
+    // 완성된 응답을 콜백으로 반환한다.
     callback(response);
 }
 
@@ -369,9 +405,11 @@ void MemberController::handleGetMemberProfile(
     Callback &&callback,
     const std::string &memberIdValue)
 {
+    // URL 경로 변수 문자열을 안전하게 회원 ID 숫자로 변환한다.
     const auto memberId = parseMemberId(memberIdValue);
     if (!memberId.has_value())
     {
+        // ID 형식이 잘못된 경우 400 Bad Request로 즉시 응답한다.
         auto response =
             drogon::HttpResponse::newHttpJsonResponse(makeErrorBody("Invalid member id."));
         response->setStatusCode(drogon::k400BadRequest);
@@ -380,17 +418,21 @@ void MemberController::handleGetMemberProfile(
         return;
     }
 
+    // 세션 토큰과 대상 회원 ID를 전달해 프로필 조회를 서비스에 위임한다.
     const auto result =
         service_.getMemberProfile(extractSessionToken(request), *memberId);
 
+    // 서비스 결과를 공통 JSON 응답 형태로 변환한다.
     Json::Value body;
     body["ok"] = result.ok;
     body["message"] = result.message;
     if (result.profile.has_value())
     {
+        // 조회 성공 시 profile 객체를 응답 본문에 추가한다.
         body["profile"] = buildProfileJson(*result.profile);
     }
 
+    // 상태코드, CORS를 설정한 뒤 응답을 반환한다.
     auto response = drogon::HttpResponse::newHttpJsonResponse(body);
     response->setStatusCode(static_cast<drogon::HttpStatusCode>(result.statusCode));
     applyCors(request, response);
@@ -400,6 +442,7 @@ void MemberController::handleGetMemberProfile(
 void MemberController::handleUpdateProfile(const drogon::HttpRequestPtr &request,
                                            Callback &&callback)
 {
+    // 프로필 수정 API는 JSON body가 필수이다.
     const auto json = request->getJsonObject();
     if (!json)
     {
@@ -411,21 +454,26 @@ void MemberController::handleUpdateProfile(const drogon::HttpRequestPtr &request
         return;
     }
 
+    // 수정 가능한 입력 필드만 DTO로 추출한다.
     UpdateProfileRequestDTO dto;
     dto.name = json->get("name", "").asString();
     dto.email = json->get("email", "").asString();
 
+    // 세션 토큰으로 현재 사용자를 식별해 서비스 로직을 호출한다.
     const auto sessionToken = extractSessionToken(request);
     const auto result = service_.updateProfile(sessionToken, dto);
 
+    // 서비스 결과를 JSON 응답으로 구성한다.
     Json::Value body;
     body["ok"] = result.ok;
     body["message"] = result.message;
     if (result.member.has_value())
     {
+        // 변경된 회원 정보가 있으면 member 객체를 포함한다.
         body["member"] = buildMemberJson(*result.member);
     }
 
+    // 상태코드와 CORS 헤더를 설정하고 응답한다.
     auto response = drogon::HttpResponse::newHttpJsonResponse(body);
     response->setStatusCode(static_cast<drogon::HttpStatusCode>(result.statusCode));
     applyCors(request, response);
@@ -435,6 +483,7 @@ void MemberController::handleUpdateProfile(const drogon::HttpRequestPtr &request
 void MemberController::handleChangePassword(const drogon::HttpRequestPtr &request,
                                             Callback &&callback)
 {
+    // 비밀번호 변경 API는 JSON body를 필수로 요구한다.
     const auto json = request->getJsonObject();
     if (!json)
     {
@@ -446,18 +495,22 @@ void MemberController::handleChangePassword(const drogon::HttpRequestPtr &reques
         return;
     }
 
+    // 현재/신규/확인 비밀번호를 DTO로 매핑한다.
     ChangePasswordRequestDTO dto;
     dto.currentPassword = json->get("currentPassword", "").asString();
     dto.newPassword = json->get("newPassword", "").asString();
     dto.confirmPassword = json->get("confirmPassword", "").asString();
 
+    // 세션 토큰으로 사용자 식별 후 비밀번호 변경 로직을 실행한다.
     const auto sessionToken = extractSessionToken(request);
     const auto result = service_.changePassword(sessionToken, dto);
 
+    // 성공/실패 결과와 메시지를 응답 본문으로 조립한다.
     Json::Value body;
     body["ok"] = result.ok;
     body["message"] = result.message;
 
+    // 상태코드/CORS를 적용하고 응답을 반환한다.
     auto response = drogon::HttpResponse::newHttpJsonResponse(body);
     response->setStatusCode(static_cast<drogon::HttpStatusCode>(result.statusCode));
     applyCors(request, response);
@@ -467,6 +520,7 @@ void MemberController::handleChangePassword(const drogon::HttpRequestPtr &reques
 void MemberController::handleAwardExperience(const drogon::HttpRequestPtr &request,
                                              Callback &&callback)
 {
+    // 경험치 지급 API는 JSON body를 필수로 요구한다.
     const auto json = request->getJsonObject();
     if (!json)
     {
@@ -478,12 +532,15 @@ void MemberController::handleAwardExperience(const drogon::HttpRequestPtr &reque
         return;
     }
 
+    // 어떤 행동으로 경험치를 부여할지 actionType을 DTO에 담는다.
     AwardExperienceRequestDTO dto;
     dto.actionType = json->get("actionType", "").asString();
 
+    // 세션 토큰으로 사용자를 식별해 경험치 반영 로직을 실행한다.
     const auto sessionToken = extractSessionToken(request);
     const auto result = service_.awardExperience(sessionToken, dto);
 
+    // 지급 결과와 레벨 변화를 포함한 응답 본문을 조립한다.
     Json::Value body;
     body["ok"] = result.ok;
     body["message"] = result.message;
@@ -492,9 +549,11 @@ void MemberController::handleAwardExperience(const drogon::HttpRequestPtr &reque
     body["newLevel"] = result.newLevel;
     if (result.member.has_value())
     {
+        // 최신 회원 상태를 내려주기 위해 member 정보를 함께 포함한다.
         body["member"] = buildMemberJson(*result.member);
     }
 
+    // 상태코드/CORS를 적용해 응답을 반환한다.
     auto response = drogon::HttpResponse::newHttpJsonResponse(body);
     response->setStatusCode(static_cast<drogon::HttpStatusCode>(result.statusCode));
     applyCors(request, response);
@@ -504,6 +563,7 @@ void MemberController::handleAwardExperience(const drogon::HttpRequestPtr &reque
 void MemberController::handleSaveFoodMbti(const drogon::HttpRequestPtr &request,
                                           Callback &&callback)
 {
+    // Food MBTI 저장 API는 JSON body를 필수로 요구한다.
     const auto json = request->getJsonObject();
     if (!json)
     {
@@ -515,22 +575,26 @@ void MemberController::handleSaveFoodMbti(const drogon::HttpRequestPtr &request,
         return;
     }
 
+    // 기본 문자열 필드를 요청 JSON에서 DTO로 복사한다.
     SaveFoodMbtiRequestDTO dto;
     dto.type = json->get("type", "").asString();
     dto.title = json->get("title", "").asString();
     dto.description = json->get("description", "").asString();
 
+    // traits가 배열로 들어오면 문자열 원소만 선별해 DTO에 담는다.
     if (json->isMember("traits") && (*json)["traits"].isArray())
     {
         for (const auto &item : (*json)["traits"])
         {
             if (item.isString())
             {
+                // 문자열 값만 허용해 타입 오염을 방지한다.
                 dto.traits.push_back(item.asString());
             }
         }
     }
 
+    // recommendedFoods도 같은 방식으로 문자열 배열만 복사한다.
     if (json->isMember("recommendedFoods") &&
         (*json)["recommendedFoods"].isArray())
     {
@@ -538,26 +602,32 @@ void MemberController::handleSaveFoodMbti(const drogon::HttpRequestPtr &request,
         {
             if (item.isString())
             {
+                // 문자열 값만 허용해 타입 오염을 방지한다.
                 dto.recommendedFoods.push_back(item.asString());
             }
         }
     }
 
+    // completedAt은 선택 필드이므로 문자열일 때만 반영한다.
     if (json->isMember("completedAt") && (*json)["completedAt"].isString())
     {
         dto.completedAt = (*json)["completedAt"].asString();
     }
 
+    // 세션 토큰 기준으로 현재 사용자 MBTI 저장을 서비스에 위임한다.
     const auto result = service_.saveMyFoodMbti(extractSessionToken(request), dto);
 
+    // 서비스 결과를 JSON 응답으로 조립한다.
     Json::Value body;
     body["ok"] = result.ok;
     body["message"] = result.message;
     if (result.foodMbti.has_value())
     {
+        // 저장된 MBTI 결과가 있을 때만 응답에 포함한다.
         body["foodMbti"] = buildFoodMbtiJson(*result.foodMbti);
     }
 
+    // 상태코드/CORS를 적용하고 응답을 반환한다.
     auto response = drogon::HttpResponse::newHttpJsonResponse(body);
     response->setStatusCode(static_cast<drogon::HttpStatusCode>(result.statusCode));
     applyCors(request, response);

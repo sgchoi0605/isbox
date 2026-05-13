@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <cstdint>
 #include <optional>
@@ -10,7 +10,7 @@
 namespace ingredient
 {
 
-// Ingredient domain service. Handles validation and orchestration.
+// 식재료 도메인 서비스. 검증과 오케스트레이션을 담당한다.
 class IngredientService
 {
   public:
@@ -44,4 +44,4 @@ class IngredientService
     IngredientMapper mapper_;
 };
 
-}  // namespace ingredient
+}  // ingredient 네임스페이스
