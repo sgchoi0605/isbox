@@ -133,7 +133,19 @@
       </div>
     </div>
 
+    <form class="community-search mb-6" onsubmit="handleSearchPosts(event)">
+      <input
+        type="text"
+        id="postSearchInput"
+        class="form-input"
+        placeholder="Search by title"
+        maxlength="100"
+      >
+      <button type="submit" class="btn btn-outline">Search</button>
+    </form>
+
     <div id="postsContainer"></div>
+    <div id="postsPagination" class="community-pagination"></div>
   </main>
 
   <div id="addPostModal" class="modal">
@@ -193,12 +205,83 @@
   <script src="js/app.js"></script>
   <script>
     let currentFilter = 'all';
+    let currentSearch = '';
+    let currentPage = 1;
+    const pageSize = 9;
+
+    function updateFilterButtons(filter) {
+      const triggers = document.querySelectorAll('.tab-trigger');
+      triggers.forEach(trigger => {
+        trigger.classList.remove('active');
+        if (trigger.dataset.tab === filter) {
+          trigger.classList.add('active');
+        }
+      });
+    }
+
+    function renderPagination(pagination) {
+      const paginationContainer = document.getElementById('postsPagination');
+      if (!paginationContainer) {
+        return;
+      }
+
+      const totalPages = Number(pagination?.totalPages || 0);
+      const page = Number(pagination?.page || 1);
+
+      if (totalPages <= 0) {
+        paginationContainer.innerHTML = '';
+        return;
+      }
+
+      const maxVisibleButtons = 7;
+      let startPage = Math.max(1, page - Math.floor(maxVisibleButtons / 2));
+      let endPage = Math.min(totalPages, startPage + maxVisibleButtons - 1);
+      startPage = Math.max(1, endPage - maxVisibleButtons + 1);
+
+      const numberButtons = [];
+      for (let i = startPage; i <= endPage; i += 1) {
+        const isActive = i === page;
+        numberButtons.push(`
+          <button
+            class="btn ${isActive ? 'btn-secondary' : 'btn-outline'} btn-sm community-page-btn"
+            onclick="goToPage(${i})"
+            ${isActive ? 'disabled' : ''}
+          >
+            ${i}
+          </button>
+        `);
+      }
+
+      paginationContainer.innerHTML = `
+        <button
+          class="btn btn-outline btn-sm community-page-btn"
+          onclick="goToPage(${page - 1})"
+          ${pagination.hasPrev ? '' : 'disabled'}
+        >
+          Prev
+        </button>
+        ${numberButtons.join('')}
+        <button
+          class="btn btn-outline btn-sm community-page-btn"
+          onclick="goToPage(${page + 1})"
+          ${pagination.hasNext ? '' : 'disabled'}
+        >
+          Next
+        </button>
+      `;
+    }
 
     async function renderPosts() {
       const container = document.getElementById('postsContainer');
 
       try {
-        const posts = await app.loadCommunityPosts(currentFilter);
+        const { posts, pagination } = await app.loadCommunityPosts({
+          filter: currentFilter,
+          search: currentSearch,
+          page: currentPage,
+          size: pageSize
+        });
+        currentPage = Number(pagination?.page || 1);
         const currentUserId = Number(app.state.user?.memberId || 0);
 
         if (posts.length === 0) {
@@ -211,6 +294,17 @@
               </div>
             </div>
           `;
+          if (currentSearch.length > 0) {
+            const primaryMessage = container.querySelector('.text-gray-500');
+            const secondaryMessage = container.querySelector('.text-gray-400');
+            if (primaryMessage) {
+              primaryMessage.textContent = 'No search results found.';
+            }
+            if (secondaryMessage) {
+              secondaryMessage.textContent = 'Try a different keyword.';
+            }
+          }
+          renderPagination(pagination);
           return;
         }
 
@@ -275,6 +369,7 @@
             `).join('')}
           </div>
         `;
+        renderPagination(pagination);
       } catch (error) {
         container.innerHTML = `
           <div class="card shadow-md">
@@ -283,21 +378,40 @@
             </div>
           </div>
         `;
+        const paginationContainer = document.getElementById('postsPagination');
+        if (paginationContainer) {
+          paginationContainer.innerHTML = '';
+        }
         app.showToast(error.message || '게시글을 불러오지 못했습니다.', 'error');
       }
     }
 
+    async function goToPage(page) {
+      const nextPage = Number(page);
+      if (!Number.isInteger(nextPage) || nextPage < 1 || nextPage === currentPage) {
+        return;
+      }
+
+      currentPage = nextPage;
+      await renderPosts();
+    }
+
     async function filterPosts(filter) {
       currentFilter = filter;
+      currentPage = 1;
+      updateFilterButtons(filter);
       await renderPosts();
+    }
 
-      const triggers = document.querySelectorAll('.tab-trigger');
-      triggers.forEach(trigger => {
-        trigger.classList.remove('active');
-        if (trigger.dataset.tab === filter) {
-          trigger.classList.add('active');
-        }
-      });
+    async function handleSearchPosts(event) {
+      if (event) {
+        event.preventDefault();
+      }
+
+      const input = document.getElementById('postSearchInput');
+      currentSearch = input ? input.value.trim() : '';
+      currentPage = 1;
+      await renderPosts();
     }
 
     async function handleAddPost(event) {
@@ -353,6 +467,7 @@
 
     document.addEventListener('DOMContentLoaded', async function() {
       await app.checkAuth();
+      updateFilterButtons(currentFilter);
       await renderPosts();
       renderNotifications();
     });

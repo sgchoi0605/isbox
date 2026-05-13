@@ -243,6 +243,7 @@
     let editingIngredientId = null;
     let foodSearchResults = [];
     let selectedFoodSnapshot = null;
+    const nutrientNumberFormatter = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 2 });
 
     function escapeHtml(value) {
       return String(value ?? '')
@@ -318,6 +319,19 @@
       }
       const numberValue = Number(value);
       return Number.isNaN(numberValue) ? undefined : numberValue;
+    }
+
+    function formatNutrientGram(value) {
+      const numericValue = toNumberOrUndefined(value);
+      if (numericValue === undefined) {
+        return '-';
+      }
+      return `${nutrientNumberFormatter.format(numericValue)}g`;
+    }
+
+    function formatNutritionBasis(value) {
+      const rawValue = String(value ?? '').trim();
+      return rawValue ? escapeHtml(rawValue) : '';
     }
 
     function renderFoodSearchItems(items) {
@@ -501,6 +515,23 @@
 
                     <div style="display: flex; flex-direction: column; gap: 0.5rem;">
                       <p class="text-sm font-medium text-gray-700">수량: ${escapeHtml(item.quantity)}${escapeHtml(item.unit)}</p>
+                      <div class="ingredient-macro">
+                        <div class="ingredient-macro-grid">
+                          <div class="ingredient-macro-item">
+                            <span class="ingredient-macro-label">탄수화물</span>
+                            <span class="ingredient-macro-value">${formatNutrientGram(item.carbohydrateG)}</span>
+                          </div>
+                          <div class="ingredient-macro-item">
+                            <span class="ingredient-macro-label">단백질</span>
+                            <span class="ingredient-macro-value">${formatNutrientGram(item.proteinG)}</span>
+                          </div>
+                          <div class="ingredient-macro-item">
+                            <span class="ingredient-macro-label">지방</span>
+                            <span class="ingredient-macro-value">${formatNutrientGram(item.fatG)}</span>
+                          </div>
+                        </div>
+                        ${formatNutritionBasis(item.nutritionBasisAmount) ? `<p class="ingredient-macro-basis">기준량: ${formatNutritionBasis(item.nutritionBasisAmount)}</p>` : ''}
+                      </div>
                       <div class="flex items-center gap-2 text-gray-600">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2">
                           <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>

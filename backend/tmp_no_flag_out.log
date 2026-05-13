@@ -1,6 +1,0 @@
-20260512 12:48:47.864000 UTC 14508 ERROR Error(2013) "Lost connection to server during query" - MysqlConnection.cc:333
-20260512 12:48:47.871000 UTC 14508 ERROR Failed to mysql_real_connect() - MysqlConnection.cc:335
-20260512 12:48:48.898000 UTC 14508 ERROR Error(2013) "Lost connection to server during query" - MysqlConnection.cc:333
-20260512 12:48:48.904000 UTC 14508 ERROR Failed to mysql_real_connect() - MysqlConnection.cc:335
-20260512 12:48:49.922000 UTC 14508 ERROR Error(2013) "Lost connection to server during query" - MysqlConnection.cc:333
-20260512 12:48:49.928000 UTC 14508 ERROR Failed to mysql_real_connect() - MysqlConnection.cc:335

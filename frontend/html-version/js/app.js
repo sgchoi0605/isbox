@@ -3,6 +3,14 @@ const state = {
   user: null,
   ingredients: [],
   communityPosts: [],
+  communityPagination: {
+    page: 1,
+    size: 9,
+    totalItems: 0,
+    totalPages: 0,
+    hasPrev: false,
+    hasNext: false
+  },
   expiringItems: 0,
   level: 1,
   exp: 0
@@ -30,6 +38,8 @@ const TOAST_MESSAGE_TRANSLATIONS = Object.freeze({
   'Invalid storage value.': '보관 위치 값이 올바르지 않습니다.',
   'Invalid expiry date format.': '유통기한 형식이 올바르지 않습니다.',
   'Invalid post type filter.': '게시글 필터 값이 올바르지 않습니다.',
+  'Invalid page parameter.': '페이지 값이 올바르지 않습니다.',
+  'Invalid size parameter.': '페이지 크기 값이 올바르지 않습니다.',
   'Type must be share or exchange.': '게시글 유형은 나눔 또는 교환이어야 합니다.',
   'Title is required.': '제목을 입력해주세요.',
   'Title must be 100 characters or fewer.': '제목은 100자 이하여야 합니다.',
@@ -894,12 +904,32 @@ function checkExpiringItems() {
   return expiring;
 }
 
-async function loadCommunityPosts(filter = 'all') {
-  const query = filter && filter !== 'all'
-    ? `?type=${encodeURIComponent(filter)}`
-    : '';
+async function loadCommunityPosts(options = {}) {
+  const normalizedOptions = typeof options === 'string'
+    ? { filter: options }
+    : (options || {});
+  const shouldReturnDetailed = typeof options === 'object'
+    && options !== null
+    && Object.keys(normalizedOptions).length > 0;
 
-  const response = await fetch(`${API_BASE_URL}/api/board/posts${query}`, {
+  const filter = typeof normalizedOptions.filter === 'string' ? normalizedOptions.filter : 'all';
+  const search = typeof normalizedOptions.search === 'string' ? normalizedOptions.search.trim() : '';
+  const page = Number.isInteger(normalizedOptions.page) && normalizedOptions.page > 0
+    ? normalizedOptions.page
+    : 1;
+  const size = Number.isInteger(normalizedOptions.size) && normalizedOptions.size > 0
+    ? normalizedOptions.size
+    : 9;
+
+  const params = new URLSearchParams();
+  params.set('type', filter || 'all');
+  params.set('page', String(page));
+  params.set('size', String(size));
+  if (search) {
+    params.set('search', search);
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/board/posts?${params.toString()}`, {
     method: 'GET',
     credentials: 'include'
   });
@@ -909,8 +939,29 @@ async function loadCommunityPosts(filter = 'all') {
     throw new Error(body?.message || '게시글을 불러오지 못했습니다.');
   }
 
-  state.communityPosts = body.posts || [];
-  return state.communityPosts;
+  const posts = Array.isArray(body.posts) ? body.posts : [];
+  const pagination = body.pagination && typeof body.pagination === 'object'
+    ? body.pagination
+    : {};
+
+  state.communityPosts = posts;
+  state.communityPagination = {
+    page: Number(pagination.page) > 0 ? Number(pagination.page) : 1,
+    size: Number(pagination.size) > 0 ? Number(pagination.size) : size,
+    totalItems: Number(pagination.totalItems) >= 0 ? Number(pagination.totalItems) : posts.length,
+    totalPages: Number(pagination.totalPages) >= 0 ? Number(pagination.totalPages) : 0,
+    hasPrev: Boolean(pagination.hasPrev),
+    hasNext: Boolean(pagination.hasNext)
+  };
+
+  if (!shouldReturnDetailed) {
+    return state.communityPosts;
+  }
+
+  return {
+    posts: state.communityPosts,
+    pagination: state.communityPagination
+  };
 }
 
 function saveCommunityPosts(posts) {
