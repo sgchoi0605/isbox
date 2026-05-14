@@ -52,7 +52,9 @@ CREATE TABLE ingredients (
 
 ## 공공데이터 연동
 
-- endpoint: `https://api.data.go.kr/openapi/tn_pubr_public_nutri_process_info_api`
+- endpoint(processed): `https://api.data.go.kr/openapi/tn_pubr_public_nutri_process_info_api`
+- endpoint(material): `https://api.data.go.kr/openapi/tn_pubr_public_nutri_material_info_api`
+- endpoint(food): `https://api.data.go.kr/openapi/tn_pubr_public_nutri_food_info_api`
 - 검색 요청 기본값: `serviceKey`, `type=json`, `pageNo`, `numOfRows`, `foodNm`
 - 사용자가 음식 단어를 검색하면 API 결과 목록을 보여주고, 선택한 항목의 일부 값을 `ingredients`에 저장합니다.
 
@@ -146,3 +148,11 @@ WHERE ingredient_id = ? AND member_id = ? AND deleted_at IS NULL;
 - `PUT /api/ingredients?ingredientId={id}`
 - `DELETE /api/ingredients?ingredientId={id}`
 - `GET /api/nutrition/processed-foods?keyword={term}`
+- `GET /api/nutrition/foods?keyword={term}`
+
+`/api/nutrition/foods` 응답 구조:
+
+- `groups.processed[]`, `groups.material[]`, `groups.food[]`
+- `counts.processed`, `counts.material`, `counts.food`
+- `warnings[]`, `failedCategories[]` (부분 성공 시 포함)
+- 각 항목 공통 필드에 `sourceType(processed|material|food)`, `sourceTypeLabel(가공식품|원재료|음식)` 포함

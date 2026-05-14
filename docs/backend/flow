@@ -45,16 +45,17 @@
 ## ingredient
 
 - `controllers/IngredientController.h`: 식재료 CRUD와 가공식품 검색 API 핸들러의 선언부다.
-- `controllers/IngredientController.cpp`: `/api/ingredients`와 `/api/nutrition/processed-foods` 요청을 받아 DTO로 바꾸고 JSON으로 응답한다.
+- `controllers/IngredientController.cpp`: `/api/ingredients`, `/api/nutrition/processed-foods`, `/api/nutrition/foods` 요청을 받아 DTO로 바꾸고 JSON으로 응답한다.
 - `services/IngredientService.h`: 식재료 목록/생성/수정/삭제와 가공식품 검색 기능의 인터페이스를 정의한다.
 - `services/IngredientService.cpp`: 식재료 필수값, 날짜, 보관 위치, 영양정보를 검증/정규화하고 외부 영양 API 검색을 수행한다.
 - `mappers/IngredientMapper.h`: 회원별 식재료 조회, 단건 조회, 등록, 수정, 소프트 삭제 DB 함수를 선언한다.
 - `mappers/IngredientMapper.cpp`: `ingredients` 테이블 SQL을 실행하고 영양정보/출처 같은 optional DB 값을 DTO로 변환한다.
 - `models/IngredientTypes.h`: 식재료 생성/수정 요청, 식재료 응답, 가공식품 검색 항목, 결과 DTO를 정의한다.
+- `services/NutritionFoodsSearchService.h`: 가공식품/원재료/음식 3개 공공 API를 통합 호출하고 카테고리별 그룹 응답을 구성한다.
 
 ### ingredient 흐름
 
-1. 클라이언트가 `/api/ingredients`로 GET/POST/PUT/DELETE 요청을 보내거나 가공식품 검색 API를 호출한다.
+1. 클라이언트가 `/api/ingredients`로 GET/POST/PUT/DELETE 요청을 보내거나 `/api/nutrition/processed-foods`, `/api/nutrition/foods` 검색 API를 호출한다.
 2. `IngredientController`가 `X-Member-Id`, `ingredientId`, JSON body, 검색어를 읽어 `IngredientService`에 넘긴다.
 3. `IngredientService`가 식재료 값과 보관 위치를 검증하고, 필요하면 외부 영양 API 검색 결과를 DTO로 만든다.
 4. `IngredientMapper`가 회원 소유 조건으로 `ingredients` DB를 처리하고, Controller가 식재료/검색 결과를 JSON으로 응답한다.

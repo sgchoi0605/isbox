@@ -1,4 +1,4 @@
-﻿// 드로곤 프레임워크 핵심 기능을 사용하기 위한 헤더를 포함한다.
+// 드로곤 프레임워크 핵심 기능을 사용하기 위한 헤더를 포함한다.
 #include <drogon/drogon.h>
 
 // 문자열/컨테이너 알고리즘 유틸리티를 사용하기 위한 헤더를 포함한다.
@@ -15,13 +15,13 @@
 #include <vector>
 
 // 회원 컨트롤러 선언을 가져온다.
-#include "../controllers/MemberController.h"
+#include "member/controller/MemberController.h"
 // 친구 컨트롤러 선언을 가져온다.
-#include "../controllers/FriendController.h"
+#include "friend/controller/FriendController.h"
 // 게시판 컨트롤러 선언을 가져온다.
-#include "../controllers/BoardController.h"
+#include "board/controller/BoardController.h"
 // 식재료/가공식품 컨트롤러 선언을 가져온다.
-#include "../controllers/IngredientController.h"
+#include "ingredient/controller/IngredientController.h"
 
 // 외부에 노출하지 않을 내부 헬퍼 영역을 시작한다.
 namespace

@@ -141,9 +141,9 @@
       
       <form id="addIngredientForm" onsubmit="handleAddIngredient(event)">
         <div id="publicFoodSearchGroup" class="form-group">
-          <label class="form-label" for="foodSearchKeyword">가공식품 영양정보 검색</label>
+          <label class="form-label" for="foodSearchKeyword">식품 통합 영양정보 검색</label>
           <div class="flex gap-2">
-            <input type="text" id="foodSearchKeyword" class="form-input" placeholder="예: 참치, 햄, 과자">
+            <input type="text" id="foodSearchKeyword" class="form-input" placeholder="예: 참치, 양파, 김치찌개">
             <button type="button" class="btn btn-outline" onclick="handleSearchFood()">검색</button>
           </div>
           <div id="foodSearchResults" class="mt-2"></div>
@@ -239,11 +239,87 @@
       other: '기타'
     };
 
+    const FOOD_SEARCH_PAGE_SIZE = 5;
+    const FOOD_SEARCH_SOURCE_TYPES = ['processed', 'material', 'food'];
+    const FOOD_SEARCH_SOURCE_LABELS = {
+      processed: '가공식품',
+      material: '원재료',
+      food: '음식'
+    };
+    const FOOD_SEARCH_CATEGORY_BY_SOURCE = {
+      processed: '가공식품',
+      material: '원재료',
+      food: '음식'
+    };
+
     let ingredientListCache = [];
     let editingIngredientId = null;
-    let foodSearchResults = [];
+    let foodSearchKeyword = '';
+    let foodSearchResults = createEmptyFoodSearchGroups();
+    let foodSearchWarnings = [];
+    let foodSearchFailedCategories = [];
+    let foodSearchHasMore = createInitialHasMoreBySource();
+    let foodSearchNextPage = createInitialNextPageBySource();
+    let foodSearchLoadingBySource = createInitialLoadingBySource();
+    let activeFoodSearchTab = 'all';
     let selectedFoodSnapshot = null;
     const nutrientNumberFormatter = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 2 });
+
+    function createEmptyFoodSearchGroups() {
+      return {
+        processed: [],
+        material: [],
+        food: []
+      };
+    }
+
+    function createInitialHasMoreBySource() {
+      return {
+        processed: false,
+        material: false,
+        food: false
+      };
+    }
+
+    function createInitialNextPageBySource() {
+      return {
+        processed: 2,
+        material: 2,
+        food: 2
+      };
+    }
+
+    function createInitialLoadingBySource() {
+      return {
+        processed: false,
+        material: false,
+        food: false
+      };
+    }
+
+    function ensureFoodSearchCategoryOptions() {
+      const categoryInput = document.getElementById('category');
+      if (!categoryInput) return;
+
+      const requiredOptions = [
+        { value: '가공식품', label: '가공식품' },
+        { value: '원재료', label: '원재료' },
+        { value: '음식', label: '음식' }
+      ];
+
+      requiredOptions.forEach(optionData => {
+        const exists = Array.from(categoryInput.options).some(
+          option => option.value === optionData.value
+        );
+
+        if (!exists) {
+          const option = document.createElement('option');
+          option.value = optionData.value;
+          option.textContent = optionData.label;
+          categoryInput.appendChild(option);
+        }
+      });
+    }
 
     function escapeHtml(value) {
       return String(value ?? '')
@@ -277,7 +353,14 @@
       if (results) results.innerHTML = '';
       if (summary) summary.textContent = '';
 
-      foodSearchResults = [];
+      foodSearchKeyword = '';
+      foodSearchResults = createEmptyFoodSearchGroups();
+      foodSearchWarnings = [];
+      foodSearchFailedCategories = [];
+      foodSearchHasMore = createInitialHasMoreBySource();
+      foodSearchNextPage = createInitialNextPageBySource();
+      foodSearchLoadingBySource = createInitialLoadingBySource();
+      activeFoodSearchTab = 'all';
       selectedFoodSnapshot = null;
     }
 
@@ -295,6 +378,7 @@
       editingIngredientId = null;
       setIngredientModalMode(false);
       clearFoodSearchUi();
+      ensureFoodSearchCategoryOptions();
 
       const form = document.getElementById('addIngredientForm');
       if (form) form.reset();
@@ -329,35 +413,278 @@
       return `${nutrientNumberFormatter.format(numericValue)}g`;
     }
 
+    function formatEnergyKcal(value) {
+      const numericValue = toNumberOrUndefined(value);
+      if (numericValue === undefined) {
+        return '-';
+      }
+      return `${nutrientNumberFormatter.format(numericValue)}kcal`;
+    }
+
+    function formatNutrientMg(value) {
+      const numericValue = toNumberOrUndefined(value);
+      if (numericValue === undefined) {
+        return '-';
+      }
+      return `${nutrientNumberFormatter.format(numericValue)}mg`;
+    }
+
+    function formatTextOrDash(value) {
+      const rawValue = String(value ?? '').trim();
+      return rawValue ? escapeHtml(rawValue) : '-';
+    }
+
+    function formatImportYn(value) {
+      const normalized = String(value ?? '').trim();
+      if (!normalized) {
+        return '-';
+      }
+      const upper = normalized.toUpperCase();
+      if (upper === 'Y') return '수입';
+      if (upper === 'N') return '국산';
+      return escapeHtml(normalized);
+    }
+
     function formatNutritionBasis(value) {
       const rawValue = String(value ?? '').trim();
       return rawValue ? escapeHtml(rawValue) : '';
     }
 
-    function renderFoodSearchItems(items) {
-      const results = document.getElementById('foodSearchResults');
-      if (!results) return;
+    function normalizeFoodSearchGroups(rawGroups) {
+      const normalized = createEmptyFoodSearchGroups();
+      const source = rawGroups && typeof rawGroups === 'object' ? rawGroups : {};
 
+      FOOD_SEARCH_SOURCE_TYPES.forEach(sourceType => {
+        const items = Array.isArray(source[sourceType]) ? source[sourceType] : [];
+        normalized[sourceType] = items.slice(0, 30).map(item => ({
+          ...item,
+          sourceType: String(item?.sourceType || sourceType),
+          sourceTypeLabel: String(item?.sourceTypeLabel || FOOD_SEARCH_SOURCE_LABELS[sourceType])
+        }));
+      });
+
+      return normalized;
+    }
+
+    function normalizeFoodSearchHasMore(rawHasMore) {
+      const normalized = createInitialHasMoreBySource();
+      const source = rawHasMore && typeof rawHasMore === 'object' ? rawHasMore : {};
+
+      FOOD_SEARCH_SOURCE_TYPES.forEach(sourceType => {
+        normalized[sourceType] = Boolean(source[sourceType]);
+      });
+
+      return normalized;
+    }
+
+    function appendFoodSearchItems(sourceType, items) {
+      const currentItems = Array.isArray(foodSearchResults[sourceType]) ? foodSearchResults[sourceType] : [];
+      const nextItems = Array.isArray(items) ? items : [];
+      const seenCodes = new Set(currentItems.map(item => String(item?.foodCode || '').trim()).filter(Boolean));
+
+      nextItems.forEach(item => {
+        const code = String(item?.foodCode || '').trim();
+        if (code && seenCodes.has(code)) {
+          return;
+        }
+        if (code) {
+          seenCodes.add(code);
+        }
+        currentItems.push(item);
+      });
+
+      foodSearchResults[sourceType] = currentItems.slice(0, 30);
+    }
+
+    function getFoodSearchItemsByTab(tab) {
+      if (tab === 'all') {
+        return FOOD_SEARCH_SOURCE_TYPES.flatMap(sourceType => foodSearchResults[sourceType] || []);
+      }
+      return Array.isArray(foodSearchResults[tab]) ? foodSearchResults[tab] : [];
+    }
+
+    function renderFoodSearchCards(sourceType, items) {
       if (!items.length) {
-        results.innerHTML = '<p class="text-sm text-gray-500 mt-2">검색 결과가 없습니다.</p>';
-        return;
+        return '<p class="text-sm text-gray-500 mt-2">검색 결과가 없습니다.</p>';
       }
 
-      results.innerHTML = items.map((item, index) => `
-        <div class="p-3 mt-2 rounded-lg border border-gray-200">
-          <div class="flex items-start justify-between gap-2">
-            <div>
-              <p class="font-medium text-gray-900">${escapeHtml(item.foodName)}</p>
+      return items.map((item, index) => `
+        <div class="food-search-card">
+          <div class="food-search-card-main">
+            <div class="food-search-card-content">
+              <p class="food-search-card-title">${escapeHtml(item.foodName || '-')}</p>
+              <p class="food-search-card-meta">
+                <span class="food-search-chip">${escapeHtml(item.sourceTypeLabel || FOOD_SEARCH_SOURCE_LABELS[sourceType] || '-')}</span>
+                <span>${escapeHtml(item.foodCode || '-')}</span>
+              </p>
             </div>
-            <button type="button" class="btn btn-outline" onclick="selectFoodResult(${index})">선택</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="selectFoodResult('${sourceType}', ${index})">선택</button>
           </div>
         </div>
       `).join('');
     }
 
+    function renderFoodSearchSection(sourceType, options = {}) {
+      const {
+        showHeading = true,
+        sectionClassName = ''
+      } = options;
+
+      const allItems = Array.isArray(foodSearchResults[sourceType]) ? foodSearchResults[sourceType] : [];
+      const visibleCount = allItems.length;
+      const visibleItems = allItems;
+      const canExpand = Boolean(foodSearchHasMore[sourceType]);
+      const isLoading = Boolean(foodSearchLoadingBySource[sourceType]);
+
+      return `
+        <section class="food-search-section ${sectionClassName}">
+          ${showHeading ? `
+            <div class="food-search-section-header">
+              <h4 class="food-search-section-title">${escapeHtml(FOOD_SEARCH_SOURCE_LABELS[sourceType] || sourceType)}</h4>
+              <span class="food-search-count">${visibleCount}/${allItems.length}</span>
+            </div>
+          ` : ''}
+          <div class="food-search-items">
+            ${renderFoodSearchCards(sourceType, visibleItems)}
+          </div>
+          ${canExpand ? `
+            <div class="food-search-actions">
+              <button type="button" class="btn btn-outline btn-sm" onclick="expandFoodSearchCategory('${sourceType}')" ${isLoading ? 'disabled' : ''}>
+                ${isLoading ? '불러오는 중...' : '더보기'}
+              </button>
+            </div>
+          ` : ''}
+        </section>
+      `;
+    }
+
+    function renderFoodSearchItems() {
+      const results = document.getElementById('foodSearchResults');
+      if (!results) return;
+
+      const tabItems = getFoodSearchItemsByTab(activeFoodSearchTab);
+      const hasAnyResult = tabItems.length > 0;
+
+      const warningHtml = foodSearchWarnings.length
+        ? `
+          <div class="food-search-warning">
+            ${foodSearchWarnings.map(warning => `<p>${escapeHtml(warning)}</p>`).join('')}
+          </div>
+        `
+        : '';
+
+      const failedBadgeHtml = foodSearchFailedCategories.length
+        ? `
+          <p class="food-search-failed">
+            일부 카테고리 조회 실패: ${foodSearchFailedCategories.map(item => escapeHtml(item)).join(', ')}
+          </p>
+        `
+        : '';
+
+      if (!hasAnyResult) {
+        results.innerHTML = `
+          ${warningHtml}
+          ${failedBadgeHtml}
+          <p class="text-sm text-gray-500 mt-2">검색 결과가 없습니다.</p>
+        `;
+        return;
+      }
+
+      const tabHeader = `
+        <div class="food-search-tabs" role="tablist" aria-label="식품 검색 탭">
+          <button type="button" class="food-search-tab ${activeFoodSearchTab === 'all' ? 'active' : ''}" onclick="setFoodSearchTab('all')">전체</button>
+          <button type="button" class="food-search-tab ${activeFoodSearchTab === 'processed' ? 'active' : ''}" onclick="setFoodSearchTab('processed')">가공식품</button>
+          <button type="button" class="food-search-tab ${activeFoodSearchTab === 'material' ? 'active' : ''}" onclick="setFoodSearchTab('material')">원재료</button>
+          <button type="button" class="food-search-tab ${activeFoodSearchTab === 'food' ? 'active' : ''}" onclick="setFoodSearchTab('food')">음식</button>
+        </div>
+      `;
+
+      let contentHtml = '';
+      if (activeFoodSearchTab === 'all') {
+        contentHtml = FOOD_SEARCH_SOURCE_TYPES
+          .map(sourceType => renderFoodSearchSection(sourceType, {
+            showHeading: true,
+            sectionClassName: 'is-all'
+          }))
+          .join('');
+      } else {
+        contentHtml = renderFoodSearchSection(activeFoodSearchTab, {
+          showHeading: true
+        });
+      }
+
+      results.innerHTML = `
+        ${warningHtml}
+        ${failedBadgeHtml}
+        ${tabHeader}
+        <div class="food-search-result-body">
+          ${contentHtml}
+        </div>
+      `;
+    }
+
+    function setFoodSearchTab(tab) {
+      if (tab !== 'all' && !FOOD_SEARCH_SOURCE_TYPES.includes(tab)) {
+        return;
+      }
+
+      activeFoodSearchTab = tab;
+      renderFoodSearchItems();
+    }
+
+    async function expandFoodSearchCategory(sourceType) {
+      if (!FOOD_SEARCH_SOURCE_TYPES.includes(sourceType)) {
+        return;
+      }
+      if (!foodSearchKeyword || !foodSearchHasMore[sourceType] || foodSearchLoadingBySource[sourceType]) {
+        return;
+      }
+
+      const nextPage = Number(foodSearchNextPage[sourceType] || 2);
+      foodSearchLoadingBySource[sourceType] = true;
+      renderFoodSearchItems();
+
+      try {
+        const response = await app.searchFoods(foodSearchKeyword, {
+          sourceType,
+          page: nextPage,
+          pageSize: FOOD_SEARCH_PAGE_SIZE
+        });
+        const normalizedResponse = response && typeof response === 'object'
+          ? response
+          : {};
+        const normalizedGroups = normalizeFoodSearchGroups(normalizedResponse.groups);
+        appendFoodSearchItems(sourceType, normalizedGroups[sourceType]);
+
+        const normalizedHasMore = normalizeFoodSearchHasMore(normalizedResponse.hasMore);
+        foodSearchHasMore[sourceType] = Boolean(normalizedHasMore[sourceType]);
+        foodSearchNextPage[sourceType] = nextPage + 1;
+
+        const warnings = Array.isArray(normalizedResponse.warnings)
+          ? normalizedResponse.warnings.map(item => String(item || '').trim()).filter(Boolean)
+          : [];
+        if (warnings.length) {
+          foodSearchWarnings = warnings;
+        }
+
+        const failed = Array.isArray(normalizedResponse.failedCategories)
+          ? normalizedResponse.failedCategories.map(item => String(item || '').trim()).filter(Boolean)
+          : [];
+        if (failed.length) {
+          foodSearchFailedCategories = failed;
+        }
+      } catch (error) {
+        app.showToast(error.message || '추가 검색에 실패했습니다.', 'error');
+      } finally {
+        foodSearchLoadingBySource[sourceType] = false;
+        renderFoodSearchItems();
+      }
+    }
+
     async function handleSearchFood() {
       const keywordInput = document.getElementById('foodSearchKeyword');
       const results = document.getElementById('foodSearchResults');
+      const summary = document.getElementById('selectedFoodSummary');
       if (!keywordInput || !results) return;
 
       const keyword = keywordInput.value.trim();
@@ -367,20 +694,55 @@
       }
 
       results.innerHTML = '<p class="text-sm text-gray-500 mt-2">검색 중...</p>';
+      foodSearchKeyword = keyword;
+      foodSearchResults = createEmptyFoodSearchGroups();
+      foodSearchWarnings = [];
+      foodSearchFailedCategories = [];
+      foodSearchHasMore = createInitialHasMoreBySource();
+      foodSearchNextPage = createInitialNextPageBySource();
+      foodSearchLoadingBySource = createInitialLoadingBySource();
+      activeFoodSearchTab = 'all';
+      selectedFoodSnapshot = null;
+      if (summary) summary.textContent = '';
 
       try {
-        const foods = await app.searchProcessedFoods(keyword);
-        foodSearchResults = Array.isArray(foods) ? foods : [];
-        renderFoodSearchItems(foodSearchResults);
+        const response = await app.searchFoods(keyword, {
+          page: 1,
+          pageSize: FOOD_SEARCH_PAGE_SIZE
+        });
+        const normalizedResponse = response && typeof response === 'object'
+          ? response
+          : {};
+
+        foodSearchResults = normalizeFoodSearchGroups(normalizedResponse.groups);
+        foodSearchHasMore = normalizeFoodSearchHasMore(normalizedResponse.hasMore);
+        foodSearchWarnings = Array.isArray(normalizedResponse.warnings)
+          ? normalizedResponse.warnings.map(item => String(item || '').trim()).filter(Boolean)
+          : [];
+        foodSearchFailedCategories = Array.isArray(normalizedResponse.failedCategories)
+          ? normalizedResponse.failedCategories.map(item => String(item || '').trim()).filter(Boolean)
+          : [];
+
+        renderFoodSearchItems();
       } catch (error) {
         results.innerHTML = '<p class="text-sm text-red-500 mt-2">검색에 실패했습니다.</p>';
         app.showToast(error.message || '검색에 실패했습니다.', 'error');
       }
     }
 
-    function selectFoodResult(index) {
-      const food = foodSearchResults[index];
+    function selectFoodResult(sourceType, index) {
+      const foods = Array.isArray(foodSearchResults[sourceType]) ? foodSearchResults[sourceType] : [];
+      const food = foods[index];
       if (!food) return;
+
+      const normalizedSourceType = String(food.sourceType || sourceType || '').trim() || 'processed';
+      const sourceTypeLabel = String(
+        food.sourceTypeLabel ||
+        FOOD_SEARCH_SOURCE_LABELS[normalizedSourceType] ||
+        FOOD_SEARCH_SOURCE_LABELS[sourceType] ||
+        ''
+      ).trim();
+      const categoryValue = FOOD_SEARCH_CATEGORY_BY_SOURCE[normalizedSourceType] || '';
 
       selectedFoodSnapshot = {
         publicFoodCode: food.foodCode || undefined,
@@ -395,7 +757,9 @@
         manufacturerName: food.manufacturerName || undefined,
         importYn: food.importYn || undefined,
         originCountryName: food.originCountryName || undefined,
-        dataBaseDate: food.dataBaseDate || undefined
+        dataBaseDate: food.dataBaseDate || undefined,
+        sourceType: normalizedSourceType,
+        sourceTypeLabel: sourceTypeLabel || undefined
       };
 
       const nameInput = document.getElementById('name');
@@ -403,9 +767,10 @@
       const summary = document.getElementById('selectedFoodSummary');
 
       if (nameInput) nameInput.value = food.foodName || '';
-      if (categoryInput && !categoryInput.value) categoryInput.value = '기타';
+      if (categoryInput && categoryValue) categoryInput.value = categoryValue;
       if (summary) {
-        summary.textContent = `선택됨: ${food.foodName || '-'} (${food.foodCode || '-'})`;
+        const label = sourceTypeLabel || FOOD_SEARCH_SOURCE_LABELS[sourceType] || '-';
+        summary.textContent = `선택됨: ${food.foodName || '-'} (${food.foodCode || '-'}) - ${label}`;
       }
     }
 
@@ -419,6 +784,7 @@
       editingIngredientId = String(target.id);
       setIngredientModalMode(true);
       clearFoodSearchUi();
+      ensureFoodSearchCategoryOptions();
 
       document.getElementById('name').value = target.name || '';
       document.getElementById('category').value = target.category || '';
@@ -623,6 +989,7 @@
       if (!(await app.requireAuth())) {
         return;
       }
+      ensureFoodSearchCategoryOptions();
       await renderIngredients();
       renderNotifications();
     });

@@ -185,6 +185,11 @@ h1, h2, h3, h4 {
   color: white;
 }
 
+.badge-expired {
+  background: #111827;
+  color: white;
+}
+
 .badge-outline {
   background: white;
   border: 1px solid #d1d5db;
@@ -685,7 +690,7 @@ h1, h2, h3, h4 {
 
 .ingredient-macro-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
   gap: 0.5rem;
 }
 
@@ -710,6 +715,67 @@ h1, h2, h3, h4 {
   margin: 0;
   font-size: 0.75rem;
   color: #6b7280;
+}
+
+.ingredient-main-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ingredient-detail-toggle {
+  align-self: flex-start;
+  margin-top: 0.25rem;
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
+}
+
+.ingredient-detail-panel {
+  margin-top: 0.25rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed #d1d5db;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.ingredient-detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.ingredient-detail-section-title {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #374151;
+}
+
+.ingredient-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.4rem 0.75rem;
+}
+
+.ingredient-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.ingredient-detail-label {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.ingredient-detail-value {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #111827;
+  text-align: right;
+  word-break: break-word;
 }
 
 /* Recipe Card */
@@ -825,6 +891,150 @@ h1, h2, h3, h4 {
 
 .tab-content.active {
   display: block;
+}
+
+.food-search-tabs {
+  margin-top: 0.75rem;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.food-search-tab {
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  border-radius: 0.625rem;
+  padding: 0.45rem 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #374151;
+  cursor: pointer;
+}
+
+.food-search-tab.active {
+  border-color: #2563eb;
+  color: #1d4ed8;
+  background: #eff6ff;
+}
+
+.food-search-warning {
+  margin-top: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.625rem;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  color: #92400e;
+  font-size: 0.8rem;
+}
+
+.food-search-warning p {
+  margin: 0;
+}
+
+.food-search-warning p + p {
+  margin-top: 0.25rem;
+}
+
+.food-search-failed {
+  margin-top: 0.5rem;
+  margin-bottom: 0.25rem;
+  color: #b91c1c;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.food-search-result-body {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.food-search-section {
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  padding: 0.65rem;
+  background: #ffffff;
+}
+
+.food-search-section.is-all {
+  background: #f8fafc;
+}
+
+.food-search-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.4rem;
+}
+
+.food-search-section-title {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.food-search-count {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.food-search-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.food-search-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 0.625rem;
+  padding: 0.55rem 0.65rem;
+  background: #ffffff;
+}
+
+.food-search-card-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.food-search-card-content {
+  min-width: 0;
+}
+
+.food-search-card-title {
+  margin: 0;
+  color: #111827;
+  font-size: 0.88rem;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.food-search-card-meta {
+  margin: 0.2rem 0 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #6b7280;
+  font-size: 0.75rem;
+}
+
+.food-search-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  padding: 0.1rem 0.45rem;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.food-search-actions {
+  margin-top: 0.5rem;
+  display: flex;
+  justify-content: flex-end;
 }
 
 /* Icons (using Unicode symbols as fallback) */
@@ -953,6 +1163,32 @@ input[type="checkbox"] {
 
   .community-search {
     max-width: 100%;
+  }
+
+  .food-search-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .food-search-card-main {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .food-search-actions {
+    justify-content: flex-start;
+  }
+
+  .ingredient-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ingredient-detail-row {
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .ingredient-detail-value {
+    text-align: left;
   }
 }
 

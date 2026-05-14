@@ -34,6 +34,14 @@ const TOAST_MESSAGE_TRANSLATIONS = Object.freeze({
   'Forbidden.': '친구 관계에서만 조회할 수 있습니다.',
   'Member not found.': '사용자를 찾을 수 없습니다.',
   'Invalid member id.': '잘못된 사용자 ID입니다.',
+  'Invalid friendship id.': '잘못된 친구 관계 ID입니다.',
+  'Friendship id is required.': '친구 관계 ID가 필요합니다.',
+  'Friendship not found.': '친구 관계를 찾을 수 없습니다.',
+  'Only participants can remove this friendship.': '해당 친구 관계의 당사자만 삭제할 수 있습니다.',
+  'Friendship is not accepted.': '수락된 친구 관계만 삭제할 수 있습니다.',
+  'Friend removed.': '친구가 삭제되었습니다.',
+  'Database error while removing friend.': '친구 삭제 중 데이터베이스 오류가 발생했습니다.',
+  'Server error while removing friend.': '친구 삭제 중 서버 오류가 발생했습니다.',
   'Invalid action type.': '잘못된 작업 유형입니다.',
   'Invalid storage value.': '보관 위치 값이 올바르지 않습니다.',
   'Invalid expiry date format.': '유통기한 형식이 올바르지 않습니다.',
@@ -80,6 +88,8 @@ const TOAST_MESSAGE_TRANSLATIONS = Object.freeze({
   'Server error while loading posts.': '게시글 조회 중 서버 오류가 발생했습니다.',
   'Database error while creating post.': '게시글 등록 중 데이터베이스 오류가 발생했습니다.',
   'Server error while creating post.': '게시글 등록 중 서버 오류가 발생했습니다.',
+  'PUBLIC_NUTRI_SERVICE_KEY is not configured. Set env var or backend/config/keys.local.json.':
+    '공공 영양 API 서비스 키가 설정되지 않았습니다. backend/config/keys.local.json 또는 PUBLIC_NUTRI_SERVICE_KEY를 설정한 뒤 백엔드를 재시작해주세요.',
   'Database error while deleting post.': '게시글 삭제 중 데이터베이스 오류가 발생했습니다.',
   'Server error while deleting post.': '게시글 삭제 중 서버 오류가 발생했습니다.',
   'Invalid response from nutrition public API.': '영양 정보 공공 API 응답 형식이 올바르지 않습니다.',
@@ -131,6 +141,10 @@ function translateToastMessage(message, type = 'info') {
     return '영양 정보 공공 API 오류가 발생했습니다.';
   }
 
+  if (normalized.startsWith('PUBLIC_NUTRI_SERVICE_KEY is not configured.')) {
+    return '공공 영양 API 서비스 키가 설정되지 않았습니다. backend/config/keys.local.json 또는 PUBLIC_NUTRI_SERVICE_KEY를 설정한 뒤 백엔드를 재시작해주세요.';
+  }
+
   if (type === 'error' && isLikelyEnglishMessage(normalized)) {
     return '오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
   }
@@ -177,6 +191,16 @@ async function putJson(path, body) {
 async function getJson(path) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'GET',
+    credentials: 'include'
+  });
+
+  const data = await parseJsonSafe(response);
+  return { response, data };
+}
+
+async function deleteJson(path) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'DELETE',
     credentials: 'include'
   });
 
@@ -656,6 +680,23 @@ async function cancelFriendRequest(friendshipId) {
   return data.request || null;
 }
 
+async function removeFriend(friendshipId) {
+  const normalizedId = Number(friendshipId);
+  if (!normalizedId) {
+    throw new Error('잘못된 친구 ID입니다.');
+  }
+
+  const { response, data } = await deleteJson(
+    `/api/friends/${encodeURIComponent(normalizedId)}`
+  );
+
+  if (!response.ok || !data || data.ok === false) {
+    throw new Error(data?.message || '친구 삭제에 실패했습니다.');
+  }
+
+  return true;
+}
+
 function normalizeIngredientForClient(ingredient) {
   if (!ingredient) {
     return null;
@@ -736,7 +777,9 @@ function buildIngredientPayload(ingredient) {
     manufacturerName: ingredient.manufacturerName || undefined,
     importYn: ingredient.importYn || undefined,
     originCountryName: ingredient.originCountryName || undefined,
-    dataBaseDate: ingredient.dataBaseDate || undefined
+    dataBaseDate: ingredient.dataBaseDate || undefined,
+    sourceType: ingredient.sourceType || undefined,
+    sourceTypeLabel: ingredient.sourceTypeLabel || undefined
   };
 }
 
@@ -829,27 +872,139 @@ async function searchProcessedFoods(keyword) {
     return [];
   }
 
-  const response = await fetch(
-    `${API_BASE_URL}/api/nutrition/processed-foods?keyword=${encodeURIComponent(normalizedKeyword)}`,
-    {
-      method: 'GET',
-      credentials: 'include'
-    }
-  );
+  const fetchFoods = async () => {
+    const response = await fetch(
+      `${API_BASE_URL}/api/nutrition/processed-foods?keyword=${encodeURIComponent(normalizedKeyword)}`,
+      {
+        method: 'GET',
+        credentials: 'include'
+      }
+    );
 
-  const body = await parseJsonSafe(response);
-  if (!response.ok || !body || body.ok === false) {
-    throw new Error(body?.message || '식품 검색에 실패했습니다.');
+    const body = await parseJsonSafe(response);
+    if (!response.ok || !body || body.ok === false) {
+      throw new Error(body?.message || '식품 검색에 실패했습니다.');
+    }
+
+    return body.foods || [];
+  };
+
+  try {
+    return await fetchFoods();
+  } catch (error) {
+    const message = typeof error?.message === 'string' ? error.message : '';
+    const shouldRetry = message.startsWith('Failed to call nutrition public API.');
+    if (!shouldRetry) {
+      throw error;
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 180));
+    return await fetchFoods();
+  }
+}
+
+async function searchFoods(keyword, options = {}) {
+  const normalizedKeyword = String(keyword || '').trim();
+  if (!normalizedKeyword) {
+    return {
+      groups: {
+        processed: [],
+        material: [],
+        food: []
+      },
+      counts: {
+        processed: 0,
+        material: 0,
+        food: 0
+      },
+      hasMore: {
+        processed: false,
+        material: false,
+        food: false
+      },
+      warnings: [],
+      failedCategories: []
+    };
   }
 
-  return body.foods || [];
+  const normalizedSourceType = String(options?.sourceType || '').trim();
+  const normalizedPage = Math.max(1, Number(options?.page || 1) | 0);
+  const normalizedPageSize = Math.max(1, Number(options?.pageSize || 5) | 0);
+
+  const fetchGroups = async () => {
+    const query = new URLSearchParams();
+    query.set('keyword', normalizedKeyword);
+    query.set('page', String(normalizedPage));
+    query.set('pageSize', String(normalizedPageSize));
+    if (normalizedSourceType) {
+      query.set('sourceType', normalizedSourceType);
+    }
+
+    const response = await fetch(
+      `${API_BASE_URL}/api/nutrition/foods?${query.toString()}`,
+      {
+        method: 'GET',
+        credentials: 'include'
+      }
+    );
+
+    const body = await parseJsonSafe(response);
+    if (!response.ok || !body || body.ok === false) {
+      throw new Error(body?.message || '식품 검색에 실패했습니다.');
+    }
+
+    return body;
+  };
+
+  try {
+    return await fetchGroups();
+  } catch (error) {
+    const message = typeof error?.message === 'string' ? error.message : '';
+    const shouldRetry = message.startsWith('Failed to call nutrition public API.');
+    if (!shouldRetry) {
+      throw error;
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 180));
+    return await fetchGroups();
+  }
 }
 
 function getDaysUntilExpiry(expiryDate) {
+  const parseLocalDate = value => {
+    if (typeof value !== 'string') {
+      return null;
+    }
+
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+    if (!match) {
+      return null;
+    }
+
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const parsed = new Date(year, month - 1, day);
+    if (
+      Number.isNaN(parsed.getTime()) ||
+      parsed.getFullYear() !== year ||
+      parsed.getMonth() !== month - 1 ||
+      parsed.getDate() !== day
+    ) {
+      return null;
+    }
+
+    parsed.setHours(0, 0, 0, 0);
+    return parsed;
+  };
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const expiry = new Date(expiryDate);
-  expiry.setHours(0, 0, 0, 0);
+  const expiry = parseLocalDate(expiryDate);
+  if (!expiry) {
+    return Number.POSITIVE_INFINITY;
+  }
+
   const diffTime = expiry.getTime() - today.getTime();
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   return diffDays;
@@ -859,13 +1014,15 @@ function getExpiryBadgeClass(expiryDate) {
   const days = getDaysUntilExpiry(expiryDate);
 
   if (days < 0) {
+    return 'badge-expired';
+  } else if (days <= 1) {
     return 'badge-danger';
   } else if (days <= 3) {
-    return 'badge-danger';
-  } else if (days <= 7) {
     return 'badge-warning';
-  } else {
+  } else if (days <= 7) {
     return 'badge-success';
+  } else {
+    return 'badge-outline';
   }
 }
 
@@ -1396,11 +1553,13 @@ window.app = {
   acceptFriendRequest,
   rejectFriendRequest,
   cancelFriendRequest,
+  removeFriend,
   loadIngredients,
   addIngredient,
   updateIngredient,
   deleteIngredient,
   searchProcessedFoods,
+  searchFoods,
   getDaysUntilExpiry,
   getExpiryBadgeClass,
   getExpiryText,

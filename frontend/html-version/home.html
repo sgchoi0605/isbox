@@ -201,10 +201,25 @@
         </div>
         <div class="card-content">
           <div id="calendar"></div>
+          <div id="calendarDayDetails" style="margin-top: 0.75rem; padding: 0.75rem; border: 1px solid #e5e7eb; border-radius: 0.5rem; background: #f9fafb; color: #4b5563; font-size: 0.875rem;">
+            날짜를 선택하면 해당 날짜 유통기한을 확인할 수 있습니다.
+          </div>
           <div style="margin-top: 1rem; display: flex; align-items: center; justify-content: center; gap: 1rem; font-size: 0.875rem; color: #6b7280;">
             <div style="display: flex; align-items: center; gap: 0.25rem;">
+              <div style="width: 1rem; height: 1rem; background: #dcfce7; border-radius: 0.25rem; border: 1px solid #86efac;"></div>
+              <span>D-7~4</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.25rem;">
+              <div style="width: 1rem; height: 1rem; background: #fef3c7; border-radius: 0.25rem; border: 1px solid #fcd34d;"></div>
+              <span>D-3~2</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.25rem;">
               <div style="width: 1rem; height: 1rem; background: #fee2e2; border-radius: 0.25rem; border: 1px solid #fca5a5;"></div>
-              <span>유통기한</span>
+              <span>D-1~0</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.25rem;">
+              <div style="width: 1rem; height: 1rem; background: #111827; border-radius: 0.25rem; border: 1px solid #111827;"></div>
+              <span>만료</span>
             </div>
           </div>
         </div>
@@ -344,10 +359,135 @@
 
   <script src="js/app.js"></script>
   <script>
+    function escapeHtml(value) {
+      const stringValue = typeof value === 'string' ? value : String(value ?? '');
+      return stringValue
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function parseDateKey(dateString) {
+      if (typeof dateString !== 'string') {
+        return null;
+      }
+
+      const trimmed = dateString.trim();
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+      if (!match) {
+        return null;
+      }
+
+      const year = Number(match[1]);
+      const month = Number(match[2]);
+      const day = Number(match[3]);
+      const date = new Date(year, month - 1, day);
+      if (
+        Number.isNaN(date.getTime()) ||
+        date.getFullYear() !== year ||
+        date.getMonth() !== month - 1 ||
+        date.getDate() !== day
+      ) {
+        return null;
+      }
+
+      return {
+        date,
+        key: `${match[1]}-${match[2]}-${match[3]}`
+      };
+    }
+
+    function formatDateKey(date) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    function formatDateLabel(dateKey) {
+      const parsed = parseDateKey(dateKey);
+      if (!parsed) {
+        return escapeHtml(dateKey);
+      }
+
+      const date = parsed.date;
+      return `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일`;
+    }
+
+    function getExpiryRiskStyle(daysUntilExpiry) {
+      if (!Number.isFinite(daysUntilExpiry)) {
+        return { rank: 0, background: '#ffffff', color: '#374151', borderColor: '#e5e7eb' };
+      }
+
+      if (daysUntilExpiry < 0) {
+        return { rank: 4, background: '#111827', color: '#ffffff', borderColor: '#111827' };
+      }
+      if (daysUntilExpiry <= 1) {
+        return { rank: 3, background: '#fee2e2', color: '#991b1b', borderColor: '#fca5a5' };
+      }
+      if (daysUntilExpiry <= 3) {
+        return { rank: 2, background: '#fef3c7', color: '#92400e', borderColor: '#fcd34d' };
+      }
+      if (daysUntilExpiry <= 7) {
+        return { rank: 1, background: '#dcfce7', color: '#166534', borderColor: '#86efac' };
+      }
+      return { rank: 0, background: '#ffffff', color: '#374151', borderColor: '#e5e7eb' };
+    }
+
+    function getDaySummaryText(items) {
+      if (!Array.isArray(items) || items.length === 0) {
+        return '';
+      }
+
+      const firstItemName = escapeHtml((items[0].name || '이름 없음').trim() || '이름 없음');
+      if (items.length === 1) {
+        return firstItemName;
+      }
+      return `${firstItemName} 외 ${items.length - 1}개`;
+    }
+
+    function renderCalendarDayDetails(dateKey, groupedByDate) {
+      const details = document.getElementById('calendarDayDetails');
+      if (!details) {
+        return;
+      }
+
+      const items = (groupedByDate.get(dateKey) || []).slice().sort((a, b) => {
+        if (a.daysUntilExpiry !== b.daysUntilExpiry) {
+          return a.daysUntilExpiry - b.daysUntilExpiry;
+        }
+        return String(a.name || '').localeCompare(String(b.name || ''), 'ko');
+      });
+
+      if (items.length === 0) {
+        details.innerHTML = `
+          <p style="font-weight: 600; margin: 0 0 0.35rem 0;">${escapeHtml(formatDateLabel(dateKey))}</p>
+          <p style="margin: 0; color: #6b7280;">해당 날짜 유통기한 재료가 없습니다.</p>
+        `;
+        return;
+      }
+
+      details.innerHTML = `
+        <p style="font-weight: 600; margin: 0 0 0.5rem 0;">${escapeHtml(formatDateLabel(dateKey))} 유통기한</p>
+        <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+          ${items.map(item => `
+            <p style="margin: 0; color: #374151;">${escapeHtml(item.name || '이름 없음')}</p>
+          `).join('')}
+        </div>
+      `;
+    }
+
     // 캘린더 렌더링
     async function renderCalendar() {
       const calendar = document.getElementById('calendar');
+      if (!calendar) {
+        return;
+      }
+
       const today = new Date();
+      today.setHours(0, 0, 0, 0);
       const currentYear = today.getFullYear();
       const currentMonth = today.getMonth();
 
@@ -358,52 +498,124 @@
 
       const monthNames = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
 
-      // 재료의 유통기한 날짜 가져오기
+      // 재료의 유통기한 날짜를 현재 월 기준으로 그룹화
       const ingredients = await app.loadIngredients();
-      const expiryDates = ingredients.map(item => {
-        const date = new Date(item.expiryDate);
-        return date.getDate();
+      const groupedByDate = new Map();
+      ingredients.forEach(item => {
+        const parsed = parseDateKey(item.expiryDate);
+        if (!parsed) {
+          return;
+        }
+        if (parsed.date.getFullYear() !== currentYear || parsed.date.getMonth() !== currentMonth) {
+          return;
+        }
+
+        const normalizedItem = {
+          ...item,
+          expiryDate: parsed.key,
+          daysUntilExpiry: app.getDaysUntilExpiry(parsed.key)
+        };
+        const list = groupedByDate.get(parsed.key) || [];
+        list.push(normalizedItem);
+        groupedByDate.set(parsed.key, list);
+      });
+
+      groupedByDate.forEach(items => {
+        items.sort((a, b) => {
+          if (a.daysUntilExpiry !== b.daysUntilExpiry) {
+            return a.daysUntilExpiry - b.daysUntilExpiry;
+          }
+          return String(a.name || '').localeCompare(String(b.name || ''), 'ko');
+        });
       });
 
       let calendarHTML = `
-        <div style="margin-bottom: 1rem;">
+        <div style="margin-bottom: 0.75rem;">
           <div style="text-align: center; font-weight: 600; font-size: 1.125rem; color: #111827; margin-bottom: 1rem;">
             ${currentYear}년 ${monthNames[currentMonth]}
           </div>
-          <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.25rem; text-align: center;">
+          <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.35rem;">
       `;
 
       // 요일 헤더
       const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
       dayNames.forEach(day => {
-        calendarHTML += `<div style="padding: 0.5rem; font-weight: 600; font-size: 0.875rem; color: #6b7280;">${day}</div>`;
+        calendarHTML += `<div style="padding: 0.4rem 0.25rem; font-weight: 600; font-size: 0.875rem; color: #6b7280; text-align: center;">${day}</div>`;
       });
 
       // 빈 칸 (이전 달)
       for (let i = 0; i < startingDayOfWeek; i++) {
-        calendarHTML += `<div style="padding: 0.5rem;"></div>`;
+        calendarHTML += '<div style="min-height: 3.5rem;"></div>';
       }
 
       // 날짜
       for (let day = 1; day <= daysInMonth; day++) {
-        const isToday = day === today.getDate();
-        const hasExpiry = expiryDates.includes(day);
+        const dayDate = new Date(currentYear, currentMonth, day);
+        const dayKey = formatDateKey(dayDate);
+        const dayItems = groupedByDate.get(dayKey) || [];
+        const isToday = dayKey === formatDateKey(today);
+        const highestRisk = dayItems.reduce((highest, item) => {
+          const risk = getExpiryRiskStyle(item.daysUntilExpiry);
+          return risk.rank > highest.rank ? risk : highest;
+        }, getExpiryRiskStyle(Number.POSITIVE_INFINITY));
 
-        let dayStyle = 'padding: 0.5rem; border-radius: 0.375rem; font-size: 0.875rem;';
-
-        if (isToday) {
-          dayStyle += ' background: #2563eb; color: white; font-weight: 600;';
-        } else if (hasExpiry) {
-          dayStyle += ' background: #fee2e2; color: #991b1b; font-weight: 600;';
-        } else {
-          dayStyle += ' color: #374151;';
+        let dayBackground = highestRisk.background;
+        let dayTextColor = highestRisk.color;
+        let dayBorderColor = highestRisk.borderColor;
+        if (isToday && highestRisk.rank === 0) {
+          dayBackground = '#2563eb';
+          dayTextColor = '#ffffff';
+          dayBorderColor = '#2563eb';
         }
 
-        calendarHTML += `<div style="${dayStyle}">${day}</div>`;
+        const summaryText = dayItems.length > 0 ? getDaySummaryText(dayItems) : '&nbsp;';
+        const dayStyle = [
+          'width: 100%',
+          'min-height: 3.5rem',
+          'padding: 0.4rem',
+          'border-radius: 0.5rem',
+          `border: 1px solid ${dayBorderColor}`,
+          `background: ${dayBackground}`,
+          `color: ${dayTextColor}`,
+          'display: flex',
+          'flex-direction: column',
+          'align-items: flex-start',
+          'justify-content: space-between',
+          'text-align: left',
+          'gap: 0.25rem',
+          'cursor: pointer'
+        ].join('; ');
+
+        calendarHTML += `
+          <button type="button" data-date-key="${dayKey}" style="${dayStyle}">
+            <span style="font-size: 0.875rem; font-weight: 600; line-height: 1.2;">${day}</span>
+            <span style="display: block; width: 100%; font-size: 0.66rem; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: ${dayItems.length > 0 ? 1 : 0.55};">${summaryText}</span>
+          </button>
+        `;
       }
 
       calendarHTML += `</div></div>`;
       calendar.innerHTML = calendarHTML;
+
+      const dayButtons = Array.from(calendar.querySelectorAll('button[data-date-key]'));
+      let selectedButton = null;
+      dayButtons.forEach(button => {
+        button.addEventListener('click', () => {
+          if (selectedButton) {
+            selectedButton.style.outline = 'none';
+          }
+          button.style.outline = '2px solid #2563eb';
+          button.style.outlineOffset = '1px';
+          selectedButton = button;
+          renderCalendarDayDetails(button.dataset.dateKey || '', groupedByDate);
+        });
+      });
+
+      if (dayButtons.length > 0) {
+        const todayKey = formatDateKey(today);
+        const defaultButton = dayButtons.find(button => button.dataset.dateKey === todayKey) || dayButtons[0];
+        defaultButton.click();
+      }
     }
 
     // 페이지별 초기화

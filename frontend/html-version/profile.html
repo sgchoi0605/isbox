@@ -471,7 +471,7 @@
       const profileForm = document.getElementById('profileForm');
 
       if (titleEl) {
-        titleEl.textContent = isOwnProfile ? 'My Profile' : `${profile.name || 'Friend'} Profile`;
+        titleEl.textContent = isOwnProfile ? '내 프로필' : `${profile.name || 'Friend'} Profile`;
         /*
         titleEl.textContent = isOwnProfile
           ? '내 정보'
@@ -485,7 +485,7 @@
           : '친구의 공개 프로필입니다.';
       }
 
-      if (descEl) descEl.textContent = isOwnProfile ? 'Manage profile info.' : 'Public friend profile.';
+      if (descEl) descEl.textContent = isOwnProfile ? '프로필 정보' : '친구 프로필';
       if (editProfileBtn) editProfileBtn.style.display = isOwnProfile ? 'inline-flex' : 'none';
       if (profileActions) profileActions.style.display = 'none';
       if (friendManagementCard) friendManagementCard.style.display = isOwnProfile ? '' : 'none';
@@ -507,7 +507,7 @@
       }
         */
       }
-      if (titleEl) titleEl.textContent = isOwnProfile ? 'My Profile' : `${profile.name || 'Friend'} Profile`;
+      if (titleEl) titleEl.textContent = isOwnProfile ? '내 프로필' : `${profile.name || '친구'} 프로필`;
       if (descEl) {
         descEl.textContent = isOwnProfile
           ? '프로필 정보를 확인하고 수정할 수 있습니다.'
@@ -677,7 +677,7 @@
           return `
             <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.75rem; border: 1px solid #e5e7eb; border-radius: 0.5rem; background: #ffffff;">
               <div style="min-width: 0;">
-                <p class="text-sm font-medium text-gray-900">${escapeFriendHtml(item.name || '이름 없음')}</p>
+                ${nameHtml}
                 <p class="text-sm text-gray-600">${escapeFriendHtml(item.email || '')}</p>
                 <p class="text-xs text-gray-500">${escapeFriendHtml(statusText)} ${subText ? `· ${escapeFriendHtml(subText)}` : ''}</p>
               </div>
@@ -751,23 +751,13 @@
           request => `<button class="btn btn-sm btn-outline" onclick="cancelOutgoingRequest(${Number(request.friendshipId)})">취소</button>`
         );
 
-        renderFriendRows('friendList', friends, '아직 친구가 없습니다.');
-        const friendList = document.getElementById('friendList');
-        if (friendList) {
-          const nameNodes = friendList.querySelectorAll('p.text-sm.font-medium.text-gray-900');
-          nameNodes.forEach((node, idx) => {
-            const friend = friends[idx];
-            const memberId = Number(friend?.memberId);
-            if (!Number.isInteger(memberId) || memberId <= 0) return;
-            const link = document.createElement('a');
-            link.href = `profile.html?memberId=${memberId}`;
-            link.className = 'text-sm font-medium';
-            link.style.color = '#2563eb';
-            link.style.textDecoration = 'underline';
-            link.textContent = node.textContent || '친구';
-            node.replaceWith(link);
-          });
-        }
+        renderFriendRows(
+          'friendList',
+          friends,
+          '아직 친구가 없습니다.',
+          friend => `<button class="btn btn-sm btn-outline" onclick="deleteFriend(${Number(friend.friendshipId)})">삭제</button>`,
+          { linkToProfile: true }
+        );
       } catch (error) {
         app.showToast(error.message, 'error');
       }
@@ -838,6 +828,20 @@
       try {
         await app.cancelFriendRequest(friendshipId);
         app.showToast('친구 요청을 취소했습니다.', 'success');
+        await refreshFriendSections();
+      } catch (error) {
+        app.showToast(error.message, 'error');
+      }
+    }
+
+    async function deleteFriend(friendshipId) {
+      if (!confirm('정말 친구를 삭제하시겠습니까?')) {
+        return;
+      }
+
+      try {
+        await app.removeFriend(friendshipId);
+        app.showToast('친구를 삭제했습니다.', 'success');
         await refreshFriendSections();
       } catch (error) {
         app.showToast(error.message, 'error');
